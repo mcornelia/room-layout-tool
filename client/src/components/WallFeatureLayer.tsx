@@ -236,12 +236,12 @@ export default function WallFeatureLayer({
       elements.push(
         <rect key="hit"
           x={x1 - 4} y={hitY} width={lengthPx + 8} height={hitH}
-          fill="transparent"
+          fill={dragging?.featureId === feature.instanceId ? `${strokeColor}18` : 'transparent'}
           stroke={isSelected ? strokeColor : 'transparent'}
           strokeWidth={isSelected ? 1.5 : 0}
           strokeDasharray={isSelected ? '4 3' : undefined}
           rx={2}
-          style={{ cursor: 'ew-resize' }}
+          style={{ cursor: dragging?.featureId === feature.instanceId ? 'grabbing' : 'grab' }}
           onMouseDown={e => startDrag(e, feature)}
           onClick={e => { e.stopPropagation(); onSelectFeature(feature.instanceId); }}
         />
@@ -376,12 +376,12 @@ export default function WallFeatureLayer({
       elements.push(
         <rect key="hit"
           x={hitX} y={y1 - 4} width={hitW} height={lengthPx + 8}
-          fill="transparent"
+          fill={dragging?.featureId === feature.instanceId ? `${strokeColor}18` : 'transparent'}
           stroke={isSelected ? strokeColor : 'transparent'}
           strokeWidth={isSelected ? 1.5 : 0}
           strokeDasharray={isSelected ? '4 3' : undefined}
           rx={2}
-          style={{ cursor: 'ns-resize' }}
+          style={{ cursor: dragging?.featureId === feature.instanceId ? 'grabbing' : 'grab' }}
           onMouseDown={e => startDrag(e, feature)}
           onClick={e => { e.stopPropagation(); onSelectFeature(feature.instanceId); }}
         />

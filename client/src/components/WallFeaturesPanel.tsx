@@ -172,7 +172,7 @@ export default function WallFeaturesPanel({
           {/* Length */}
           <div className="mb-2">
             <label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">
-              Length (in) — max {formatInches(wallLength(selectedFeature.wall) - selectedFeature.offset)}
+              Length (in) — max {formatInches(wallLength(selectedFeature.wall))}
             </label>
             <div className="flex items-center gap-1.5">
               <input
@@ -191,26 +191,10 @@ export default function WallFeaturesPanel({
             </div>
           </div>
 
-          {/* Offset from start */}
-          <div className="mb-2">
-            <label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">
-              Offset from {selectedFeature.wall === 'left' || selectedFeature.wall === 'right' ? 'top' : 'left'} (in)
-            </label>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min={0}
-                max={wallLength(selectedFeature.wall) - selectedFeature.length}
-                step={1}
-                className="w-full text-xs font-mono border border-border rounded px-2 py-1 bg-background text-foreground focus:outline-none focus:border-primary"
-                value={Math.round(selectedFeature.offset * 10) / 10}
-                onChange={e => {
-                  const v = Math.max(0, Math.min(wallLength(selectedFeature.wall) - selectedFeature.length, Number(e.target.value)));
-                  updateFeature({ ...selectedFeature, offset: v });
-                }}
-              />
-              <span className="text-[9px] font-mono text-muted-foreground whitespace-nowrap">{formatInches(selectedFeature.offset)}</span>
-            </div>
+          {/* Position hint */}
+          <div className="mb-2 flex items-center gap-1.5 bg-muted/40 rounded px-2 py-1.5">
+            <span className="text-[10px]">↔</span>
+            <span className="text-[9px] text-muted-foreground">Drag the feature along the wall to reposition it</span>
           </div>
 
           {/* Hinge side (doors only) */}
