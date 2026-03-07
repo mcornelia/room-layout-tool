@@ -60,6 +60,7 @@ export default function RoomCanvas({
 }: RoomCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const itemClickedRef = useRef(false); // flag: true when a furniture item was mousedown'd
   const [scale, setScale] = useState(2); // px per inch
   const [manualScale, setManualScale] = useState<number | null>(null);
   const [interaction, setInteraction] = useState<InteractionState>(null);
@@ -166,6 +167,7 @@ export default function RoomCanvas({
   const startMove = useCallback((e: React.MouseEvent, item: PlacedFurniture) => {
     e.stopPropagation();
     e.preventDefault();
+    itemClickedRef.current = true;
     onSelect(item.instanceId);
     setInteraction({
       type: 'move',
@@ -248,7 +250,17 @@ export default function RoomCanvas({
     <div
       ref={containerRef}
       className="flex-1 overflow-auto bg-[#F4F5F7] p-6 flex items-start justify-start"
-      onClick={() => onSelect(null)}
+      onMouseDownCapture={(e) => {
+        // Deselect if click target is not a furniture item, resize handle, or rotation badge
+        const target = e.target as HTMLElement;
+        if (
+          !target.closest('.furniture-item') &&
+          !target.closest('.resize-handle') &&
+          !target.closest('.rotation-badge')
+        ) {
+          onSelect(null);
+        }
+      }}
     >
       <div className="relative" style={{ paddingLeft: RULER_SIZE, paddingTop: RULER_SIZE }}>
         {/* Horizontal ruler */}
@@ -263,12 +275,12 @@ export default function RoomCanvas({
                 key={tick}
                 className="absolute flex flex-col items-center"
                 style={{ left: tick * effectiveScale, top: 0 }}
-            >
-              <div
-                className="w-px"
-                style={{
-                  height: isMajor ? 14 : 7,
-                  marginTop: isMajor ? 0 : 7,
+              >
+                <div
+                  className="w-px"
+                  style={{
+                    height: isMajor ? 14 : 7,
+                    marginTop: isMajor ? 0 : 7,
                     backgroundColor: isMajor ? 'oklch(0.55 0.012 264)' : 'oklch(0.75 0.006 264)',
                   }}
                 />
@@ -427,7 +439,7 @@ export default function RoomCanvas({
                 {/* Rotation badge — shown on selected items */}
                 {isSelected && (
                   <div
-                    className="absolute flex items-center justify-center"
+                    className="rotation-badge absolute flex items-center justify-center"
                     style={{
                       top: -22,
                       left: '50%',
