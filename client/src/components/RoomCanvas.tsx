@@ -423,6 +423,49 @@ export default function RoomCanvas({
                     onMouseDown={e => startResize(e, item, handle)}
                   />
                 ))}
+
+                {/* Rotation badge — shown on selected items */}
+                {isSelected && (
+                  <div
+                    className="absolute flex items-center justify-center"
+                    style={{
+                      top: -22,
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: '#3B5BDB',
+                      borderRadius: 4,
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                      zIndex: 40,
+                      whiteSpace: 'nowrap',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.18)',
+                    }}
+                    onMouseDown={e => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                    }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      // Rotate 90° CW: swap width/depth, clamp to room
+                      const newW = Math.min(item.depth, roomWidth - item.x);
+                      const newD = Math.min(item.width, roomDepth - item.y);
+                      onFurnitureChange(furniture.map(f =>
+                        f.instanceId === item.instanceId
+                          ? { ...f, width: newW, depth: newD, rotation: ((f.rotation ?? 0) + 90) % 360 }
+                          : f
+                      ));
+                    }}
+                    title="Rotate 90°"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }}>
+                      <path d="M9 2.5A4.5 4.5 0 1 0 9.9 6" stroke="white" strokeWidth="1.4" strokeLinecap="round" fill="none"/>
+                      <path d="M7.5 1L9.5 2.5 7.5 4" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                    </svg>
+                    <span style={{ color: 'white', fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', fontWeight: 500 }}>
+                      {item.rotation ?? 0}°
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}

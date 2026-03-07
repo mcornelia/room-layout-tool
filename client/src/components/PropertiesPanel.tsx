@@ -12,6 +12,7 @@ interface PropertiesPanelProps {
   onUpdate: (updated: PlacedFurniture) => void;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
+  onRotate: (id: string) => void;
 }
 
 function NumericField({
@@ -60,6 +61,7 @@ export default function PropertiesPanel({
   onUpdate,
   onDelete,
   onDuplicate,
+  onRotate,
 }: PropertiesPanelProps) {
   if (!item) {
     return (
@@ -176,19 +178,29 @@ export default function PropertiesPanel({
       </div>
 
       {/* Actions */}
-      <div className="p-3 border-t border-border flex gap-2">
-        <button
-          onClick={() => onDuplicate(item.instanceId)}
-          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-accent transition-colors"
-          title="Duplicate"
-        >
-          <Copy className="w-3 h-3" />
-          Copy
-        </button>
+      <div className="p-3 border-t border-border space-y-2">
+        <div className="flex gap-2">
+          <button
+            onClick={() => onRotate(item.instanceId)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-accent transition-colors"
+            title="Rotate 90° clockwise (R)"
+          >
+            <RotateCw className="w-3 h-3" />
+            Rotate 90°
+          </button>
+          <button
+            onClick={() => onDuplicate(item.instanceId)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-accent transition-colors"
+            title="Duplicate (Ctrl+D)"
+          >
+            <Copy className="w-3 h-3" />
+            Copy
+          </button>
+        </div>
         <button
           onClick={() => onDelete(item.instanceId)}
-          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-md hover:bg-destructive/10 transition-colors"
-          title="Delete"
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-md hover:bg-destructive/10 transition-colors"
+          title="Delete (Del)"
         >
           <Trash2 className="w-3 h-3" />
           Delete

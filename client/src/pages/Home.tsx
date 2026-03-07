@@ -91,6 +91,15 @@ export default function Home() {
     });
   }, []);
 
+  const handleRotate = useCallback((id: string) => {
+    setFurniture(prev => prev.map(f => {
+      if (f.instanceId !== id) return f;
+      const newW = Math.min(f.depth, ROOM_WIDTH - f.x);
+      const newD = Math.min(f.width, ROOM_DEPTH - f.y);
+      return { ...f, width: newW, depth: newD, rotation: ((f.rotation ?? 0) + 90) % 360 };
+    }));
+  }, []);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (!selectedId) return;
     if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -105,7 +114,13 @@ export default function Home() {
       e.preventDefault();
       handleDuplicate(selectedId);
     }
-  }, [selectedId, handleDelete, handleDuplicate]);
+    if ((e.key === 'r' || e.key === 'R') && !(e.ctrlKey || e.metaKey)) {
+      if ((e.target as HTMLElement).tagName !== 'INPUT') {
+        e.preventDefault();
+        handleRotate(selectedId);
+      }
+    }
+  }, [selectedId, handleDelete, handleDuplicate, handleRotate]);
 
   return (
     <div
@@ -132,7 +147,8 @@ export default function Home() {
         <span className="text-[10px] text-muted-foreground">
           Press <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Del</kbd> to remove ·{' '}
           <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Esc</kbd> to deselect ·{' '}
-          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Ctrl+D</kbd> to duplicate
+          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Ctrl+D</kbd> to duplicate ·{' '}
+          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">R</kbd> to rotate
         </span>
       </header>
 
@@ -175,6 +191,7 @@ export default function Home() {
           onUpdate={handleUpdate}
           onDelete={handleDelete}
           onDuplicate={handleDuplicate}
+          onRotate={handleRotate}
         />
       </div>
     </div>
