@@ -1,6 +1,9 @@
 // Room Layout Tool — Wall Feature Layer
 // Philosophy: Professional Floor Plan Tool
 // Renders doors, windows, and cased openings on the room walls using SVG
+// Windows: bold double-line symbol extending 14px into room + colored fill
+// Cased openings: thick end-stops + dashed threshold line across opening
+// Doors: quarter-circle arc with solid panel line
 
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { WallFeature, WallSide } from '@/lib/wallFeatures';
@@ -20,6 +23,9 @@ interface WallFeatureLayerProps {
 
 // Wall thickness in px for rendering the gap
 const WALL_THICKNESS = 8;
+// How far window / cased-opening symbols extend into the room
+const WINDOW_DEPTH = 14;
+const CASED_DEPTH = 12;
 
 export default function WallFeatureLayer({
   roomWidth,
@@ -35,7 +41,7 @@ export default function WallFeatureLayer({
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<{
     featureId: string;
-    startMousePos: number; // clientX or clientY depending on wall
+    startMousePos: number;
     startOffset: number;
   } | null>(null);
 
@@ -48,7 +54,6 @@ export default function WallFeatureLayer({
     return wall === 'top' || wall === 'bottom' ? roomWidth : roomDepth;
   }, [roomWidth, roomDepth]);
 
-  // Mouse drag for repositioning wall features
   useEffect(() => {
     if (!dragging) return;
     const feature = features.find(f => f.instanceId === dragging.featureId);
@@ -68,7 +73,6 @@ export default function WallFeatureLayer({
     };
 
     const handleMouseUp = () => setDragging(null);
-
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
@@ -92,7 +96,6 @@ export default function WallFeatureLayer({
   const canvasW = roomWidth * scale;
   const canvasH = roomDepth * scale;
 
-  // Render a single wall feature as SVG elements
   const renderFeature = (feature: WallFeature) => {
     const isSelected = feature.instanceId === selectedFeatureId;
     const { wall, type, offset, length, hingeSide } = feature;
@@ -100,112 +103,141 @@ export default function WallFeatureLayer({
     const lengthPx = length * scale;
     const wt = WALL_THICKNESS;
 
-    // Colors
-    const strokeColor = isSelected ? '#3B5BDB' : (type === 'window' ? '#0369A1' : '#1E3A5F');
+    const doorColor = isSelected ? '#3B5BDB' : '#1E3A5F';
+    const windowColor = isSelected ? '#0284C7' : '#0369A1';
+    const casedColor = isSelected ? '#7C3AED' : '#5B21B6';
+    const strokeColor = type === 'window' ? windowColor : type === 'cased-opening' ? casedColor : doorColor;
     const strokeWidth = isSelected ? 2.5 : 2;
 
-    // Build SVG elements for the feature
     const elements: React.ReactNode[] = [];
 
+    // ─── HORIZONTAL WALLS (top / bottom) ───────────────────────────────────────
     if (wall === 'top' || wall === 'bottom') {
-      const y = wall === 'top' ? 0 : canvasH - wt;
+      const wallY = wall === 'top' ? 0 : canvasH - wt;
+      const intoRoom = wall === 'top' ? 1 : -1; // direction into room
       const x1 = offsetPx;
       const x2 = offsetPx + lengthPx;
+      const innerY = wallY + intoRoom * wt; // inner wall edge
 
-      if (type === 'window') {
-        // Window: gap with 3 parallel lines inside
-        const lineY = y + wt / 2;
-        elements.push(
-          <g key="window-lines">
-            {[0.2, 0.5, 0.8].map((frac, i) => (
-              <line key={i}
-                x1={x1 + lengthPx * frac} y1={y}
-                x2={x1 + lengthPx * frac} y2={y + wt}
-                stroke={strokeColor} strokeWidth={1.5}
-              />
-            ))}
-            <line x1={x1} y1={lineY} x2={x2} y2={lineY} stroke={strokeColor} strokeWidth={1.5} />
-          </g>
-        );
-      } else if (type === 'door') {
-        // Door: gap with quarter-circle arc showing swing
-        const arcR = lengthPx;
-        const hingeX = hingeSide === 'left' ? x1 : x2;
-        const sweepX = hingeSide === 'left' ? x2 : x1;
-        const arcY = wall === 'top' ? wt : y;
-        const arcEndY = wall === 'top' ? wt + arcR : y - arcR;
-        const sweepFlag = (wall === 'top' && hingeSide === 'left') || (wall === 'bottom' && hingeSide === 'right') ? 1 : 0;
-        elements.push(
-          <g key="door-arc">
-            {/* Door panel line */}
-            <line x1={hingeX} y1={arcY} x2={sweepX} y2={arcY} stroke={strokeColor} strokeWidth={strokeWidth} />
-            {/* Swing arc */}
-            <path
-              d={`M ${sweepX} ${arcY} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${hingeX} ${arcEndY}`}
-              stroke={strokeColor} strokeWidth={1} fill="none" strokeDasharray="4 3"
-            />
-          </g>
-        );
-      }
-      // Cased opening: just the gap (no extra elements)
-
-      // White gap over wall
+      // 1. White gap to erase wall line
       elements.push(
         <rect key="gap"
-          x={x1} y={y} width={lengthPx} height={wt}
+          x={x1} y={wallY} width={lengthPx} height={wt}
           fill="white"
         />
       );
 
-      // Re-render feature symbol on top of gap
       if (type === 'window') {
-        const lineY = y + wt / 2;
+        // Outer wall line (exterior side)
+        const outerY = wall === 'top' ? wallY : wallY + wt;
+        // Inner window line (interior side, extends WINDOW_DEPTH into room)
+        const innerLineY = innerY + intoRoom * WINDOW_DEPTH;
+
+        // Filled glass pane between outer and inner lines
         elements.push(
-          <g key="window-lines-top">
-            {[0.2, 0.5, 0.8].map((frac, i) => (
-              <line key={i}
-                x1={x1 + lengthPx * frac} y1={y}
-                x2={x1 + lengthPx * frac} y2={y + wt}
-                stroke={strokeColor} strokeWidth={1.5}
-              />
-            ))}
-            <line x1={x1} y1={lineY} x2={x2} y2={lineY} stroke={strokeColor} strokeWidth={1.5} />
-          </g>
+          <rect key="window-fill"
+            x={x1} y={Math.min(outerY, innerLineY)}
+            width={lengthPx}
+            height={Math.abs(innerLineY - outerY)}
+            fill={isSelected ? 'rgba(3,105,161,0.12)' : 'rgba(186,230,253,0.5)'}
+            stroke="none"
+          />
         );
+        // Outer wall line
+        elements.push(
+          <line key="win-outer"
+            x1={x1} y1={outerY} x2={x2} y2={outerY}
+            stroke={windowColor} strokeWidth={2.5}
+          />
+        );
+        // Inner room line
+        elements.push(
+          <line key="win-inner"
+            x1={x1} y1={innerLineY} x2={x2} y2={innerLineY}
+            stroke={windowColor} strokeWidth={2.5}
+          />
+        );
+        // Left jamb
+        elements.push(
+          <line key="win-left"
+            x1={x1} y1={outerY} x2={x1} y2={innerLineY}
+            stroke={windowColor} strokeWidth={2}
+          />
+        );
+        // Right jamb
+        elements.push(
+          <line key="win-right"
+            x1={x2} y1={outerY} x2={x2} y2={innerLineY}
+            stroke={windowColor} strokeWidth={2}
+          />
+        );
+        // Center mullion line
+        const midX = x1 + lengthPx / 2;
+        elements.push(
+          <line key="win-mullion"
+            x1={midX} y1={outerY} x2={midX} y2={innerLineY}
+            stroke={windowColor} strokeWidth={1.5}
+          />
+        );
+
       } else if (type === 'door') {
         const arcR = lengthPx;
         const hingeX = hingeSide === 'left' ? x1 : x2;
         const sweepX = hingeSide === 'left' ? x2 : x1;
-        const arcY = wall === 'top' ? wt : y;
-        const arcEndY = wall === 'top' ? wt + arcR : y - arcR;
+        const panelY = innerY;
+        const arcEndY = panelY + intoRoom * arcR;
         const sweepFlag = (wall === 'top' && hingeSide === 'left') || (wall === 'bottom' && hingeSide === 'right') ? 1 : 0;
+
+        // Door panel line (solid, thick)
         elements.push(
-          <g key="door-arc-top">
-            <line x1={hingeX} y1={arcY} x2={sweepX} y2={arcY} stroke={strokeColor} strokeWidth={strokeWidth} />
-            <path
-              d={`M ${sweepX} ${arcY} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${hingeX} ${arcEndY}`}
-              stroke={strokeColor} strokeWidth={1} fill="none" strokeDasharray="4 3"
-            />
-          </g>
+          <line key="door-panel"
+            x1={hingeX} y1={panelY} x2={sweepX} y2={panelY}
+            stroke={doorColor} strokeWidth={strokeWidth + 0.5}
+          />
         );
-      } else if (type === 'cased-opening') {
-        // Cased opening: small perpendicular lines at each end
-        const lineY1 = y;
-        const lineY2 = y + wt;
+        // Swing arc (dashed)
         elements.push(
-          <g key="cased-marks">
-            <line x1={x1} y1={lineY1} x2={x1} y2={lineY2} stroke={strokeColor} strokeWidth={strokeWidth} />
-            <line x1={x2} y1={lineY1} x2={x2} y2={lineY2} stroke={strokeColor} strokeWidth={strokeWidth} />
+          <path key="door-arc"
+            d={`M ${sweepX} ${panelY} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${hingeX} ${arcEndY}`}
+            stroke={doorColor} strokeWidth={1.5} fill="none" strokeDasharray="5 3"
+          />
+        );
+
+      } else if (type === 'cased-opening') {
+        // Thick end-stop lines extending into room
+        const stopY1 = wallY;
+        const stopY2 = innerY + intoRoom * CASED_DEPTH;
+
+        elements.push(
+          <g key="cased-stops">
+            {/* Left stop */}
+            <line x1={x1} y1={stopY1} x2={x1} y2={stopY2}
+              stroke={casedColor} strokeWidth={3} strokeLinecap="round" />
+            {/* Right stop */}
+            <line x1={x2} y1={stopY1} x2={x2} y2={stopY2}
+              stroke={casedColor} strokeWidth={3} strokeLinecap="round" />
+            {/* Threshold dashed line at inner edge */}
+            <line x1={x1} y1={innerY} x2={x2} y2={innerY}
+              stroke={casedColor} strokeWidth={1.5} strokeDasharray="6 4" />
+            {/* Filled opening area */}
+            <rect
+              x={x1} y={Math.min(wallY, innerY + intoRoom * CASED_DEPTH)}
+              width={lengthPx}
+              height={Math.abs(innerY + intoRoom * CASED_DEPTH - wallY)}
+              fill={isSelected ? 'rgba(124,58,237,0.10)' : 'rgba(196,181,253,0.25)'}
+            />
           </g>
         );
       }
 
-      // Selection highlight + drag handle
+      // Hit area for dragging
+      const hitY = wall === 'top' ? wallY - 4 : wallY - WINDOW_DEPTH - 4;
+      const hitH = wt + WINDOW_DEPTH + 8;
       elements.push(
         <rect key="hit"
-          x={x1 - 4} y={y - 4} width={lengthPx + 8} height={wt + 8}
+          x={x1 - 4} y={hitY} width={lengthPx + 8} height={hitH}
           fill="transparent"
-          stroke={isSelected ? '#3B5BDB' : 'transparent'}
+          stroke={isSelected ? strokeColor : 'transparent'}
           strokeWidth={isSelected ? 1.5 : 0}
           strokeDasharray={isSelected ? '4 3' : undefined}
           rx={2}
@@ -215,16 +247,19 @@ export default function WallFeatureLayer({
         />
       );
 
-      // Dimension label
+      // Label
       if (isSelected || lengthPx > 30) {
-        const labelY = wall === 'top' ? y - 6 : y + wt + 12;
+        const labelY = wall === 'top'
+          ? wallY - 8
+          : wallY + wt + WINDOW_DEPTH + 14;
         elements.push(
           <text key="label"
             x={x1 + lengthPx / 2} y={labelY}
             textAnchor="middle"
             fontSize={9}
             fontFamily="IBM Plex Mono, monospace"
-            fill={isSelected ? '#3B5BDB' : '#64748B'}
+            fill={strokeColor}
+            fontWeight={isSelected ? '600' : '400'}
             style={{ pointerEvents: 'none', userSelect: 'none' }}
           >
             {feature.label} · {formatInches(length)}
@@ -232,98 +267,117 @@ export default function WallFeatureLayer({
         );
       }
 
+    // ─── VERTICAL WALLS (left / right) ─────────────────────────────────────────
     } else {
-      // Left or right wall
-      const x = wall === 'left' ? 0 : canvasW - wt;
+      const wallX = wall === 'left' ? 0 : canvasW - wt;
+      const intoRoom = wall === 'left' ? 1 : -1;
       const y1 = offsetPx;
       const y2 = offsetPx + lengthPx;
-
-      if (type === 'window') {
-        const lineX = x + wt / 2;
-        elements.push(
-          <g key="window-lines">
-            {[0.2, 0.5, 0.8].map((frac, i) => (
-              <line key={i}
-                x1={x} y1={y1 + lengthPx * frac}
-                x2={x + wt} y2={y1 + lengthPx * frac}
-                stroke={strokeColor} strokeWidth={1.5}
-              />
-            ))}
-            <line x1={lineX} y1={y1} x2={lineX} y2={y2} stroke={strokeColor} strokeWidth={1.5} />
-          </g>
-        );
-      } else if (type === 'door') {
-        const arcR = lengthPx;
-        const hingeY = hingeSide === 'left' ? y1 : y2;
-        const sweepY = hingeSide === 'left' ? y2 : y1;
-        const arcX = wall === 'left' ? wt : x;
-        const arcEndX = wall === 'left' ? wt + arcR : x - arcR;
-        const sweepFlag = (wall === 'left' && hingeSide === 'left') || (wall === 'right' && hingeSide === 'right') ? 1 : 0;
-        elements.push(
-          <g key="door-arc">
-            <line x1={arcX} y1={hingeY} x2={arcX} y2={sweepY} stroke={strokeColor} strokeWidth={strokeWidth} />
-            <path
-              d={`M ${arcX} ${sweepY} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${arcEndX} ${hingeY}`}
-              stroke={strokeColor} strokeWidth={1} fill="none" strokeDasharray="4 3"
-            />
-          </g>
-        );
-      }
+      const innerX = wallX + intoRoom * wt;
 
       // White gap
       elements.push(
         <rect key="gap"
-          x={x} y={y1} width={wt} height={lengthPx}
+          x={wallX} y={y1} width={wt} height={lengthPx}
           fill="white"
         />
       );
 
-      // Re-render on top
       if (type === 'window') {
-        const lineX = x + wt / 2;
+        const outerX = wall === 'left' ? wallX : wallX + wt;
+        const innerLineX = innerX + intoRoom * WINDOW_DEPTH;
+
         elements.push(
-          <g key="window-lines-top">
-            {[0.2, 0.5, 0.8].map((frac, i) => (
-              <line key={i}
-                x1={x} y1={y1 + lengthPx * frac}
-                x2={x + wt} y2={y1 + lengthPx * frac}
-                stroke={strokeColor} strokeWidth={1.5}
-              />
-            ))}
-            <line x1={lineX} y1={y1} x2={lineX} y2={y2} stroke={strokeColor} strokeWidth={1.5} />
-          </g>
+          <rect key="window-fill"
+            x={Math.min(outerX, innerLineX)} y={y1}
+            width={Math.abs(innerLineX - outerX)}
+            height={lengthPx}
+            fill={isSelected ? 'rgba(3,105,161,0.12)' : 'rgba(186,230,253,0.5)'}
+          />
         );
+        elements.push(
+          <line key="win-outer"
+            x1={outerX} y1={y1} x2={outerX} y2={y2}
+            stroke={windowColor} strokeWidth={2.5}
+          />
+        );
+        elements.push(
+          <line key="win-inner"
+            x1={innerLineX} y1={y1} x2={innerLineX} y2={y2}
+            stroke={windowColor} strokeWidth={2.5}
+          />
+        );
+        elements.push(
+          <line key="win-top"
+            x1={outerX} y1={y1} x2={innerLineX} y2={y1}
+            stroke={windowColor} strokeWidth={2}
+          />
+        );
+        elements.push(
+          <line key="win-bottom"
+            x1={outerX} y1={y2} x2={innerLineX} y2={y2}
+            stroke={windowColor} strokeWidth={2}
+          />
+        );
+        const midY = y1 + lengthPx / 2;
+        elements.push(
+          <line key="win-mullion"
+            x1={outerX} y1={midY} x2={innerLineX} y2={midY}
+            stroke={windowColor} strokeWidth={1.5}
+          />
+        );
+
       } else if (type === 'door') {
         const arcR = lengthPx;
         const hingeY = hingeSide === 'left' ? y1 : y2;
         const sweepY = hingeSide === 'left' ? y2 : y1;
-        const arcX = wall === 'left' ? wt : x;
-        const arcEndX = wall === 'left' ? wt + arcR : x - arcR;
+        const panelX = innerX;
+        const arcEndX = panelX + intoRoom * arcR;
         const sweepFlag = (wall === 'left' && hingeSide === 'left') || (wall === 'right' && hingeSide === 'right') ? 1 : 0;
+
         elements.push(
-          <g key="door-arc-top">
-            <line x1={arcX} y1={hingeY} x2={arcX} y2={sweepY} stroke={strokeColor} strokeWidth={strokeWidth} />
-            <path
-              d={`M ${arcX} ${sweepY} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${arcEndX} ${hingeY}`}
-              stroke={strokeColor} strokeWidth={1} fill="none" strokeDasharray="4 3"
-            />
-          </g>
+          <line key="door-panel"
+            x1={panelX} y1={hingeY} x2={panelX} y2={sweepY}
+            stroke={doorColor} strokeWidth={strokeWidth + 0.5}
+          />
         );
-      } else if (type === 'cased-opening') {
         elements.push(
-          <g key="cased-marks">
-            <line x1={x} y1={y1} x2={x + wt} y2={y1} stroke={strokeColor} strokeWidth={strokeWidth} />
-            <line x1={x} y1={y2} x2={x + wt} y2={y2} stroke={strokeColor} strokeWidth={strokeWidth} />
+          <path key="door-arc"
+            d={`M ${panelX} ${sweepY} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${arcEndX} ${hingeY}`}
+            stroke={doorColor} strokeWidth={1.5} fill="none" strokeDasharray="5 3"
+          />
+        );
+
+      } else if (type === 'cased-opening') {
+        const stopX1 = wallX;
+        const stopX2 = innerX + intoRoom * CASED_DEPTH;
+
+        elements.push(
+          <g key="cased-stops">
+            <line x1={stopX1} y1={y1} x2={stopX2} y2={y1}
+              stroke={casedColor} strokeWidth={3} strokeLinecap="round" />
+            <line x1={stopX1} y1={y2} x2={stopX2} y2={y2}
+              stroke={casedColor} strokeWidth={3} strokeLinecap="round" />
+            <line x1={innerX} y1={y1} x2={innerX} y2={y2}
+              stroke={casedColor} strokeWidth={1.5} strokeDasharray="6 4" />
+            <rect
+              x={Math.min(wallX, innerX + intoRoom * CASED_DEPTH)} y={y1}
+              width={Math.abs(innerX + intoRoom * CASED_DEPTH - wallX)}
+              height={lengthPx}
+              fill={isSelected ? 'rgba(124,58,237,0.10)' : 'rgba(196,181,253,0.25)'}
+            />
           </g>
         );
       }
 
       // Hit area
+      const hitX = wall === 'left' ? wallX - 4 : wallX - WINDOW_DEPTH - 4;
+      const hitW = wt + WINDOW_DEPTH + 8;
       elements.push(
         <rect key="hit"
-          x={x - 4} y={y1 - 4} width={wt + 8} height={lengthPx + 8}
+          x={hitX} y={y1 - 4} width={hitW} height={lengthPx + 8}
           fill="transparent"
-          stroke={isSelected ? '#3B5BDB' : 'transparent'}
+          stroke={isSelected ? strokeColor : 'transparent'}
           strokeWidth={isSelected ? 1.5 : 0}
           strokeDasharray={isSelected ? '4 3' : undefined}
           rx={2}
@@ -333,16 +387,19 @@ export default function WallFeatureLayer({
         />
       );
 
-      // Dimension label
+      // Label
       if (isSelected || lengthPx > 30) {
-        const labelX = wall === 'left' ? x - 8 : x + wt + 8;
+        const labelX = wall === 'left'
+          ? wallX - 10
+          : wallX + wt + WINDOW_DEPTH + 10;
         elements.push(
           <text key="label"
             x={labelX} y={y1 + lengthPx / 2}
             textAnchor={wall === 'left' ? 'end' : 'start'}
             fontSize={9}
             fontFamily="IBM Plex Mono, monospace"
-            fill={isSelected ? '#3B5BDB' : '#64748B'}
+            fill={strokeColor}
+            fontWeight={isSelected ? '600' : '400'}
             style={{ pointerEvents: 'none', userSelect: 'none' }}
             transform={`rotate(-90, ${labelX}, ${y1 + lengthPx / 2})`}
           >
