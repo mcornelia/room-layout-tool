@@ -5,6 +5,8 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { nanoid } from 'nanoid';
 import { PlacedFurniture, FurnitureTemplate, formatInches } from '@/lib/furniture';
+import { WallFeature } from '@/lib/wallFeatures';
+import WallFeatureLayer from './WallFeatureLayer';
 
 interface RoomCanvasProps {
   roomWidth: number;   // inches
@@ -16,6 +18,11 @@ interface RoomCanvasProps {
   onDrop: (template: FurnitureTemplate, x: number, y: number) => void;
   snapToGrid: boolean;
   gridSize: number; // inches
+  // Wall features
+  wallFeatures: WallFeature[];
+  selectedFeatureId: string | null;
+  onFeaturesChange: (features: WallFeature[]) => void;
+  onSelectFeature: (id: string | null) => void;
 }
 
 const ZOOM_LEVELS = [1.5, 2, 2.5, 3, 4, 5];
@@ -57,6 +64,10 @@ export default function RoomCanvas({
   onDrop,
   snapToGrid,
   gridSize,
+  wallFeatures,
+  selectedFeatureId,
+  onFeaturesChange,
+  onSelectFeature,
 }: RoomCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -481,6 +492,19 @@ export default function RoomCanvas({
               </div>
             );
           })}
+
+          {/* Wall features layer */}
+          <WallFeatureLayer
+            roomWidth={roomWidth}
+            roomDepth={roomDepth}
+            scale={effectiveScale}
+            features={wallFeatures}
+            selectedFeatureId={selectedFeatureId}
+            onSelectFeature={onSelectFeature}
+            onFeaturesChange={onFeaturesChange}
+            snapToGrid={snapToGrid}
+            gridSize={gridSize}
+          />
 
           {/* Drop hint */}
           {dragOver && (

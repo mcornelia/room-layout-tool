@@ -1,18 +1,36 @@
-// Room Layout Tool — FurnitureSidebar Component
+// Room Layout Tool — Sidebar
 // Philosophy: Professional Floor Plan Tool
-// Displays categorized furniture library with drag-to-place support
+// Two tabs: Furniture Library and Wall Features
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { FURNITURE_TEMPLATES, CATEGORY_LABELS, getFurnitureByCategory, FurnitureTemplate, FurnitureCategory } from '@/lib/furniture';
+import { WallFeature } from '@/lib/wallFeatures';
+import WallFeaturesPanel from './WallFeaturesPanel';
 
 interface FurnitureSidebarProps {
   onAddFurniture: (template: FurnitureTemplate) => void;
+  // Wall features props
+  wallFeatures: WallFeature[];
+  selectedFeatureId: string | null;
+  roomWidth: number;
+  roomDepth: number;
+  onWallFeaturesChange: (features: WallFeature[]) => void;
+  onSelectFeature: (id: string | null) => void;
 }
 
 const CATEGORY_ORDER: FurnitureCategory[] = ['bed', 'seating', 'storage', 'desk', 'table', 'other'];
 
-export default function FurnitureSidebar({ onAddFurniture }: FurnitureSidebarProps) {
+export default function FurnitureSidebar({
+  onAddFurniture,
+  wallFeatures,
+  selectedFeatureId,
+  roomWidth,
+  roomDepth,
+  onWallFeaturesChange,
+  onSelectFeature,
+}: FurnitureSidebarProps) {
+  const [activeTab, setActiveTab] = useState<'furniture' | 'walls'>('furniture');
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<FurnitureCategory>>(new Set());
   const byCategory = getFurnitureByCategory();
@@ -37,83 +55,123 @@ export default function FurnitureSidebar({ onAddFurniture }: FurnitureSidebarPro
 
   return (
     <div className="w-56 flex flex-col bg-white border-r border-border h-full overflow-hidden">
-      {/* Header */}
-      <div className="px-3 pt-3 pb-2 border-b border-border">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Furniture Library
-        </h2>
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-7 pr-2 py-1.5 text-xs border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
+      {/* Tab switcher */}
+      <div className="flex border-b border-border flex-shrink-0">
+        <button
+          className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+            activeTab === 'furniture'
+              ? 'text-primary border-b-2 border-primary bg-primary/5'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('furniture')}
+        >
+          Furniture
+        </button>
+        <button
+          className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors relative ${
+            activeTab === 'walls'
+              ? 'text-primary border-b-2 border-primary bg-primary/5'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('walls')}
+        >
+          Walls
+          {wallFeatures.length > 0 && (
+            <span className="absolute top-1 right-2 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[8px] flex items-center justify-center font-bold">
+              {wallFeatures.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Furniture list */}
-      <div className="flex-1 overflow-y-auto py-1">
-        {filtered ? (
-          // Search results
-          <div className="px-2 py-1">
-            {filtered.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4">No results</p>
-            ) : (
-              filtered.map(template => (
-                <FurnitureCard
-                  key={template.id}
-                  template={template}
-                  onAdd={onAddFurniture}
-                  onDragStart={handleDragStart}
-                />
-              ))
-            )}
+      {activeTab === 'furniture' ? (
+        <>
+          {/* Search */}
+          <div className="px-3 pt-2.5 pb-2 border-b border-border flex-shrink-0">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-7 pr-2 py-1.5 text-xs border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
           </div>
-        ) : (
-          // Categorized
-          CATEGORY_ORDER.map(cat => {
-            const items = byCategory[cat];
-            if (!items?.length) return null;
-            const isCollapsed = collapsed.has(cat);
-            return (
-              <div key={cat} className="mb-0.5">
-                <button
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent transition-colors"
-                  onClick={() => toggleCategory(cat)}
-                >
-                  <span className="uppercase tracking-wider text-[10px]">{CATEGORY_LABELS[cat]}</span>
-                  {isCollapsed
-                    ? <ChevronRight className="w-3 h-3 text-muted-foreground" />
-                    : <ChevronDown className="w-3 h-3 text-muted-foreground" />
-                  }
-                </button>
-                {!isCollapsed && (
-                  <div className="px-2 pb-1">
-                    {items.map(template => (
-                      <FurnitureCard
-                        key={template.id}
-                        template={template}
-                        onAdd={onAddFurniture}
-                        onDragStart={handleDragStart}
-                      />
-                    ))}
-                  </div>
+
+          {/* Furniture list */}
+          <div className="flex-1 overflow-y-auto py-1">
+            {filtered ? (
+              <div className="px-2 py-1">
+                {filtered.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">No results</p>
+                ) : (
+                  filtered.map(template => (
+                    <FurnitureCard
+                      key={template.id}
+                      template={template}
+                      onAdd={onAddFurniture}
+                      onDragStart={handleDragStart}
+                    />
+                  ))
                 )}
               </div>
-            );
-          })
-        )}
-      </div>
+            ) : (
+              CATEGORY_ORDER.map(cat => {
+                const items = byCategory[cat];
+                if (!items?.length) return null;
+                const isCollapsed = collapsed.has(cat);
+                return (
+                  <div key={cat} className="mb-0.5">
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent transition-colors"
+                      onClick={() => toggleCategory(cat)}
+                    >
+                      <span className="uppercase tracking-wider text-[10px]">{CATEGORY_LABELS[cat]}</span>
+                      {isCollapsed
+                        ? <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                        : <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                      }
+                    </button>
+                    {!isCollapsed && (
+                      <div className="px-2 pb-1">
+                        {items.map(template => (
+                          <FurnitureCard
+                            key={template.id}
+                            template={template}
+                            onAdd={onAddFurniture}
+                            onDragStart={handleDragStart}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
 
-      {/* Footer hint */}
-      <div className="px-3 py-2 border-t border-border bg-muted/30">
-        <p className="text-[10px] text-muted-foreground leading-tight">
-          Drag items onto the canvas or click <strong>+</strong> to add at center
-        </p>
-      </div>
+          {/* Footer hint */}
+          <div className="px-3 py-2 border-t border-border bg-muted/30 flex-shrink-0">
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              Drag items onto the canvas or click <strong>+</strong> to add at center
+            </p>
+          </div>
+        </>
+      ) : (
+        /* Walls tab */
+        <div className="flex-1 overflow-y-auto px-3 py-3">
+          <WallFeaturesPanel
+            features={wallFeatures}
+            selectedFeatureId={selectedFeatureId}
+            roomWidth={roomWidth}
+            roomDepth={roomDepth}
+            onFeaturesChange={onWallFeaturesChange}
+            onSelectFeature={onSelectFeature}
+          />
+        </div>
+      )}
     </div>
   );
 }

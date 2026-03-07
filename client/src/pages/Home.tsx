@@ -1,11 +1,12 @@
 // Room Layout Tool — Home Page
 // Philosophy: Professional Floor Plan Tool
-// Layout: Top stats bar, left sidebar (furniture), center canvas, right properties panel
+// Layout: Top stats bar, left sidebar (furniture + walls), center canvas, right properties panel
 
 import { useState, useCallback, useRef } from 'react';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import { PlacedFurniture, FurnitureTemplate, FURNITURE_TEMPLATES, formatInches, squareFeetFromInches } from '@/lib/furniture';
+import { WallFeature } from '@/lib/wallFeatures';
 import RoomCanvas from '@/components/RoomCanvas';
 import FurnitureSidebar from '@/components/FurnitureSidebar';
 import PropertiesPanel from '@/components/PropertiesPanel';
@@ -20,6 +21,11 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [gridSize, setGridSize] = useState(12); // inches
+
+  // Wall features state
+  const [wallFeatures, setWallFeatures] = useState<WallFeature[]>([]);
+  const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
+
   const canvasExportRef = useRef<HTMLDivElement>(null);
 
   const selectedItem = furniture.find(f => f.instanceId === selectedId) ?? null;
@@ -41,6 +47,7 @@ export default function Home() {
     };
     setFurniture(prev => [...prev, newItem]);
     setSelectedId(newItem.instanceId);
+    setSelectedFeatureId(null);
     toast.success(`Added ${template.name}`, { duration: 1500 });
   }, []);
 
@@ -78,14 +85,15 @@ export default function Home() {
   }, [furniture]);
 
   const handleClearAll = useCallback(() => {
-    if (furniture.length === 0) return;
+    if (furniture.length === 0 && wallFeatures.length === 0) return;
     setFurniture([]);
+    setWallFeatures([]);
     setSelectedId(null);
-    toast.success('Cleared all furniture', { duration: 1500 });
-  }, [furniture]);
+    setSelectedFeatureId(null);
+    toast.success('Cleared all items', { duration: 1500 });
+  }, [furniture, wallFeatures]);
 
   const handleExport = useCallback(() => {
-    // Use html2canvas-like approach via canvas
     toast.info('Export: Use your browser\'s screenshot tool (Ctrl+Shift+S / Cmd+Shift+4) to capture the canvas area.', {
       duration: 4000,
     });
@@ -100,27 +108,45 @@ export default function Home() {
     }));
   }, []);
 
+  // When selecting a furniture item, deselect wall feature and vice versa
+  const handleSelectFurniture = useCallback((id: string | null) => {
+    setSelectedId(id);
+    if (id) setSelectedFeatureId(null);
+  }, []);
+
+  const handleSelectFeature = useCallback((id: string | null) => {
+    setSelectedFeatureId(id);
+    if (id) setSelectedId(null);
+  }, []);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!selectedId) return;
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      if ((e.target as HTMLElement).tagName !== 'INPUT') {
-        handleDelete(selectedId);
-      }
-    }
+    const tag = (e.target as HTMLElement).tagName;
+    const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
     if (e.key === 'Escape') {
       setSelectedId(null);
+      setSelectedFeatureId(null);
     }
-    if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      handleDuplicate(selectedId);
-    }
-    if ((e.key === 'r' || e.key === 'R') && !(e.ctrlKey || e.metaKey)) {
-      if ((e.target as HTMLElement).tagName !== 'INPUT') {
+
+    if (selectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
+        handleDelete(selectedId);
+      }
+      if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handleDuplicate(selectedId);
+      }
+      if ((e.key === 'r' || e.key === 'R') && !(e.ctrlKey || e.metaKey) && !isInput) {
         e.preventDefault();
         handleRotate(selectedId);
       }
     }
-  }, [selectedId, handleDelete, handleDuplicate, handleRotate]);
+
+    if (selectedFeatureId && (e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
+      setWallFeatures(prev => prev.filter(f => f.instanceId !== selectedFeatureId));
+      setSelectedFeatureId(null);
+    }
+  }, [selectedId, selectedFeatureId, handleDelete, handleDuplicate, handleRotate]);
 
   return (
     <div
@@ -167,8 +193,16 @@ export default function Home() {
 
       {/* Main layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left sidebar */}
-        <FurnitureSidebar onAddFurniture={addFurniture} />
+        {/* Left sidebar — Furniture + Walls tabs */}
+        <FurnitureSidebar
+          onAddFurniture={addFurniture}
+          wallFeatures={wallFeatures}
+          selectedFeatureId={selectedFeatureId}
+          roomWidth={ROOM_WIDTH}
+          roomDepth={ROOM_DEPTH}
+          onWallFeaturesChange={setWallFeatures}
+          onSelectFeature={handleSelectFeature}
+        />
 
         {/* Canvas */}
         <RoomCanvas
@@ -177,10 +211,14 @@ export default function Home() {
           furniture={furniture}
           selectedId={selectedId}
           onFurnitureChange={handleFurnitureChange}
-          onSelect={setSelectedId}
+          onSelect={handleSelectFurniture}
           onDrop={handleDrop}
           snapToGrid={snapToGrid}
           gridSize={gridSize}
+          wallFeatures={wallFeatures}
+          selectedFeatureId={selectedFeatureId}
+          onFeaturesChange={setWallFeatures}
+          onSelectFeature={handleSelectFeature}
         />
 
         {/* Right properties panel */}
