@@ -1,25 +1,182 @@
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
+// Room Layout Tool — Home Page
+// Philosophy: Professional Floor Plan Tool
+// Layout: Top stats bar, left sidebar (furniture), center canvas, right properties panel
 
-/**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Best Practices, Design Guide and Common Pitfalls
- */
+import { useState, useCallback, useRef } from 'react';
+import { nanoid } from 'nanoid';
+import { toast } from 'sonner';
+import { PlacedFurniture, FurnitureTemplate, FURNITURE_TEMPLATES, formatInches, squareFeetFromInches } from '@/lib/furniture';
+import RoomCanvas from '@/components/RoomCanvas';
+import FurnitureSidebar from '@/components/FurnitureSidebar';
+import PropertiesPanel from '@/components/PropertiesPanel';
+import StatsBar from '@/components/StatsBar';
+
+// Room dimensions in inches (226" wide × 196.5" deep)
+const ROOM_WIDTH = 226;   // 18' 10"
+const ROOM_DEPTH = 196.5; // 16' 4.5"
+
 export default function Home() {
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
+  const [furniture, setFurniture] = useState<PlacedFurniture[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [gridSize, setGridSize] = useState(12); // inches
+  const canvasExportRef = useRef<HTMLDivElement>(null);
+
+  const selectedItem = furniture.find(f => f.instanceId === selectedId) ?? null;
+
+  const addFurniture = useCallback((template: FurnitureTemplate, x?: number, y?: number) => {
+    const newItem: PlacedFurniture = {
+      instanceId: nanoid(),
+      templateId: template.id,
+      name: template.name,
+      category: template.category,
+      x: x ?? Math.max(0, (ROOM_WIDTH - template.defaultWidth) / 2),
+      y: y ?? Math.max(0, (ROOM_DEPTH - template.defaultDepth) / 2),
+      width: template.defaultWidth,
+      depth: template.defaultDepth,
+      rotation: 0,
+      color: template.color,
+      borderColor: template.borderColor,
+      icon: template.icon,
+    };
+    setFurniture(prev => [...prev, newItem]);
+    setSelectedId(newItem.instanceId);
+    toast.success(`Added ${template.name}`, { duration: 1500 });
+  }, []);
+
+  const handleDrop = useCallback((template: FurnitureTemplate, x: number, y: number) => {
+    addFurniture(template, x, y);
+  }, [addFurniture]);
+
+  const handleFurnitureChange = useCallback((updated: PlacedFurniture[]) => {
+    setFurniture(updated);
+  }, []);
+
+  const handleUpdate = useCallback((updated: PlacedFurniture) => {
+    setFurniture(prev => prev.map(f => f.instanceId === updated.instanceId ? updated : f));
+  }, []);
+
+  const handleDelete = useCallback((id: string) => {
+    const item = furniture.find(f => f.instanceId === id);
+    setFurniture(prev => prev.filter(f => f.instanceId !== id));
+    setSelectedId(null);
+    if (item) toast.success(`Removed ${item.name}`, { duration: 1500 });
+  }, [furniture]);
+
+  const handleDuplicate = useCallback((id: string) => {
+    const item = furniture.find(f => f.instanceId === id);
+    if (!item) return;
+    const newItem: PlacedFurniture = {
+      ...item,
+      instanceId: nanoid(),
+      x: Math.min(item.x + 12, ROOM_WIDTH - item.width),
+      y: Math.min(item.y + 12, ROOM_DEPTH - item.depth),
+    };
+    setFurniture(prev => [...prev, newItem]);
+    setSelectedId(newItem.instanceId);
+    toast.success(`Duplicated ${item.name}`, { duration: 1500 });
+  }, [furniture]);
+
+  const handleClearAll = useCallback(() => {
+    if (furniture.length === 0) return;
+    setFurniture([]);
+    setSelectedId(null);
+    toast.success('Cleared all furniture', { duration: 1500 });
+  }, [furniture]);
+
+  const handleExport = useCallback(() => {
+    // Use html2canvas-like approach via canvas
+    toast.info('Export: Use your browser\'s screenshot tool (Ctrl+Shift+S / Cmd+Shift+4) to capture the canvas area.', {
+      duration: 4000,
+    });
+  }, []);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!selectedId) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if ((e.target as HTMLElement).tagName !== 'INPUT') {
+        handleDelete(selectedId);
+      }
+    }
+    if (e.key === 'Escape') {
+      setSelectedId(null);
+    }
+    if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleDuplicate(selectedId);
+    }
+  }, [selectedId, handleDelete, handleDuplicate]);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
-      </main>
+    <div
+      className="h-screen flex flex-col bg-background overflow-hidden"
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      style={{ outline: 'none' }}
+    >
+      {/* Top header */}
+      <header className="h-10 bg-white border-b border-border flex items-center px-4 gap-3 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-5 h-5 rounded bg-primary flex items-center justify-center">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <rect x="1" y="1" width="10" height="10" rx="1" stroke="white" strokeWidth="1.5" fill="none"/>
+              <rect x="3" y="4" width="3" height="4" rx="0.5" fill="white" opacity="0.8"/>
+              <rect x="7" y="5" width="2" height="3" rx="0.5" fill="white" opacity="0.6"/>
+            </svg>
+          </div>
+          <span className="text-sm font-semibold text-foreground">Room Layout Tool</span>
+        </div>
+        <div className="w-px h-5 bg-border" />
+        <span className="text-xs text-muted-foreground">Bedroom · {formatInches(ROOM_WIDTH)} wide × {formatInches(ROOM_DEPTH)} deep · {(ROOM_WIDTH * ROOM_DEPTH / 144).toFixed(1)} sq ft</span>
+        <div className="flex-1" />
+        <span className="text-[10px] text-muted-foreground">
+          Press <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Del</kbd> to remove ·{' '}
+          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Esc</kbd> to deselect ·{' '}
+          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Ctrl+D</kbd> to duplicate
+        </span>
+      </header>
+
+      {/* Stats bar */}
+      <StatsBar
+        roomWidth={ROOM_WIDTH}
+        roomDepth={ROOM_DEPTH}
+        furniture={furniture}
+        snapToGrid={snapToGrid}
+        gridSize={gridSize}
+        onSnapToggle={() => setSnapToGrid(p => !p)}
+        onGridSizeChange={setGridSize}
+        onClearAll={handleClearAll}
+        onExport={handleExport}
+      />
+
+      {/* Main layout */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left sidebar */}
+        <FurnitureSidebar onAddFurniture={addFurniture} />
+
+        {/* Canvas */}
+        <RoomCanvas
+          roomWidth={ROOM_WIDTH}
+          roomDepth={ROOM_DEPTH}
+          furniture={furniture}
+          selectedId={selectedId}
+          onFurnitureChange={handleFurnitureChange}
+          onSelect={setSelectedId}
+          onDrop={handleDrop}
+          snapToGrid={snapToGrid}
+          gridSize={gridSize}
+        />
+
+        {/* Right properties panel */}
+        <PropertiesPanel
+          item={selectedItem}
+          roomWidth={ROOM_WIDTH}
+          roomDepth={ROOM_DEPTH}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+          onDuplicate={handleDuplicate}
+        />
+      </div>
     </div>
   );
 }
