@@ -23,6 +23,8 @@ interface RoomCanvasProps {
   selectedFeatureId: string | null;
   onFeaturesChange: (features: WallFeature[]) => void;
   onSelectFeature: (id: string | null) => void;
+  // Tape measure
+  measureMode: boolean;
 }
 
 const ZOOM_LEVELS = [1.5, 2, 2.5, 3, 4, 5];
@@ -68,6 +70,7 @@ export default function RoomCanvas({
   selectedFeatureId,
   onFeaturesChange,
   onSelectFeature,
+  measureMode,
 }: RoomCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -77,6 +80,10 @@ export default function RoomCanvas({
   const [interaction, setInteraction] = useState<InteractionState>(null);
   const [dragOver, setDragOver] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  // Tape measure state
+  const [measurePoints, setMeasurePoints] = useState<{ x: number; y: number }[]>([]);
+  const [measureHover, setMeasureHover] = useState<{ x: number; y: number } | null>(null);
 
   const effectiveScale = manualScale ?? scale;
 
@@ -237,6 +244,56 @@ export default function RoomCanvas({
   const canvasWidth = roomWidth * effectiveScale;
   const canvasHeight = roomDepth * effectiveScale;
 
+  // Tape measure click handler
+  const handleMeasureClick = useCallback((e: React.MouseEvent) => {
+    if (!measureMode) return;
+    e.stopPropagation();
+    const pos = canvasToRoom(e.clientX, e.clientY);
+    const clamped = {
+      x: Math.max(0, Math.min(roomWidth, pos.x)),
+      y: Math.max(0, Math.min(roomDepth, pos.y)),
+    };
+    setMeasurePoints(prev => {
+      if (prev.length === 0) return [clamped];
+      if (prev.length === 1) return [prev[0], clamped];
+      // Third click: start new measurement
+      return [clamped];
+    });
+  }, [measureMode, canvasToRoom, roomWidth, roomDepth]);
+
+  const handleMeasureMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!measureMode) { setMeasureHover(null); return; }
+    const pos = canvasToRoom(e.clientX, e.clientY);
+    setMeasureHover({
+      x: Math.max(0, Math.min(roomWidth, pos.x)),
+      y: Math.max(0, Math.min(roomDepth, pos.y)),
+    });
+  }, [measureMode, canvasToRoom, roomWidth, roomDepth]);
+
+  // Clear measure when mode turns off
+  useEffect(() => {
+    if (!measureMode) {
+      setMeasurePoints([]);
+      setMeasureHover(null);
+    }
+  }, [measureMode]);
+
+  // Compute measure distance
+  const measureDist = (() => {
+    const pts = measurePoints.length === 2 ? measurePoints :
+      measurePoints.length === 1 && measureHover ? [measurePoints[0], measureHover] : null;
+    if (!pts) return null;
+    const dx = pts[1].x - pts[0].x;
+    const dy = pts[1].y - pts[0].y;
+    const distIn = Math.sqrt(dx * dx + dy * dy);
+    const feet = Math.floor(distIn / 12);
+    const inches = Math.round((distIn % 12) * 10) / 10;
+    const label = feet > 0
+      ? (inches > 0 ? `${feet}' ${inches}"` : `${feet}'`)
+      : `${inches}"`;
+    return { pts, distIn, label };
+  })();
+
   const getResizeCursor = (handle: ResizeHandle): string => {
     const map: Record<ResizeHandle, string> = {
       nw: 'nw-resize', n: 'n-resize', ne: 'ne-resize',
@@ -357,11 +414,13 @@ export default function RoomCanvas({
               linear-gradient(to bottom, rgba(148,163,184,0.25) 1px, transparent 1px)
             `,
             backgroundSize: `${gridSize * effectiveScale}px ${gridSize * effectiveScale}px`,
-            cursor: interaction ? 'grabbing' : 'default',
+            cursor: measureMode ? 'crosshair' : interaction ? 'grabbing' : 'default',
           }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          onClick={measureMode ? handleMeasureClick : undefined}
+          onMouseMove={handleMeasureMouseMove}
         >
           {/* Room dimension labels */}
           <div
@@ -492,6 +551,110 @@ export default function RoomCanvas({
               </div>
             );
           })}
+
+          {/* Tape measure overlay */}
+          {measureMode && measureDist && (() => {
+            const { pts, label } = measureDist;
+            const x1 = pts[0].x * effectiveScale;
+            const y1 = pts[0].y * effectiveScale;
+            const x2 = pts[1].x * effectiveScale;
+            const y2 = pts[1].y * effectiveScale;
+            const mx = (x1 + x2) / 2;
+            const my = (y1 + y2) / 2;
+            const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+            const len = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+            // Perpendicular offset for label
+            const perpX = -(y2 - y1) / Math.sqrt((x2-x1)**2 + (y2-y1)**2 + 0.001) * 18;
+            const perpY = (x2 - x1) / Math.sqrt((x2-x1)**2 + (y2-y1)**2 + 0.001) * 18;
+            return (
+              <svg
+                className="absolute inset-0 pointer-events-none"
+                style={{ width: canvasWidth, height: canvasHeight, overflow: 'visible', zIndex: 30 }}
+              >
+                {/* Extension lines at endpoints */}
+                <line x1={x1} y1={y1} x2={x1 + perpX * 1.5} y2={y1 + perpY * 1.5}
+                  stroke="#E63946" strokeWidth={1} opacity={0.7} />
+                <line x1={x2} y1={y2} x2={x2 + perpX * 1.5} y2={y2 + perpY * 1.5}
+                  stroke="#E63946" strokeWidth={1} opacity={0.7} />
+                {/* Main dimension line */}
+                <line x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke="#E63946" strokeWidth={1.5} strokeDasharray={measurePoints.length === 2 ? 'none' : '6 4'} />
+                {/* Arrowheads */}
+                {measurePoints.length === 2 && len > 20 && (
+                  <>
+                    <polygon
+                      points={`${x1},${y1} ${x1 + (x2-x1)/len*8 - (y2-y1)/len*4},${y1 + (y2-y1)/len*8 + (x2-x1)/len*4} ${x1 + (x2-x1)/len*8 + (y2-y1)/len*4},${y1 + (y2-y1)/len*8 - (x2-x1)/len*4}`}
+                      fill="#E63946"
+                    />
+                    <polygon
+                      points={`${x2},${y2} ${x2 - (x2-x1)/len*8 - (y2-y1)/len*4},${y2 - (y2-y1)/len*8 + (x2-x1)/len*4} ${x2 - (x2-x1)/len*8 + (y2-y1)/len*4},${y2 - (y2-y1)/len*8 - (x2-x1)/len*4}`}
+                      fill="#E63946"
+                    />
+                  </>
+                )}
+                {/* Endpoint dots */}
+                <circle cx={x1} cy={y1} r={4} fill="#E63946" />
+                {measurePoints.length >= 1 && <circle cx={x2} cy={y2} r={measurePoints.length === 2 ? 4 : 3} fill={measurePoints.length === 2 ? '#E63946' : '#E6394680'} strokeDasharray={measurePoints.length === 1 ? '3 2' : 'none'} />
+                }
+                {/* Distance label */}
+                <rect
+                  x={mx + perpX - label.length * 3.5}
+                  y={my + perpY - 9}
+                  width={label.length * 7 + 10}
+                  height={18}
+                  rx={4}
+                  fill="#E63946"
+                />
+                <text
+                  x={mx + perpX + label.length * 0}
+                  y={my + perpY + 4.5}
+                  textAnchor="middle"
+                  fontSize={11}
+                  fontFamily="IBM Plex Mono, monospace"
+                  fontWeight="600"
+                  fill="white"
+                >
+                  {label}
+                </text>
+              </svg>
+            );
+          })()}
+
+          {/* Tape measure point A indicator (before second click) */}
+          {measureMode && measurePoints.length === 1 && (
+            <svg
+              className="absolute inset-0 pointer-events-none"
+              style={{ width: canvasWidth, height: canvasHeight, overflow: 'visible', zIndex: 30 }}
+            >
+              <circle cx={measurePoints[0].x * effectiveScale} cy={measurePoints[0].y * effectiveScale} r={5} fill="#E63946" />
+              <circle cx={measurePoints[0].x * effectiveScale} cy={measurePoints[0].y * effectiveScale} r={9} fill="none" stroke="#E63946" strokeWidth={1.5} opacity={0.5} />
+              <text
+                x={measurePoints[0].x * effectiveScale + 12}
+                y={measurePoints[0].y * effectiveScale - 8}
+                fontSize={9}
+                fontFamily="IBM Plex Mono, monospace"
+                fill="#E63946"
+                fontWeight="600"
+              >A</text>
+            </svg>
+          )}
+
+          {/* Measure mode instruction overlay */}
+          {measureMode && measurePoints.length === 0 && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#E63946] text-white text-[10px] font-mono font-semibold px-3 py-1.5 rounded-full pointer-events-none shadow-lg">
+              Click to set point A
+            </div>
+          )}
+          {measureMode && measurePoints.length === 1 && !measureDist && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#E63946] text-white text-[10px] font-mono font-semibold px-3 py-1.5 rounded-full pointer-events-none shadow-lg">
+              Click to set point B
+            </div>
+          )}
+          {measureMode && measurePoints.length === 2 && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#E63946] text-white text-[10px] font-mono font-semibold px-3 py-1.5 rounded-full pointer-events-none shadow-lg">
+              Click anywhere to start a new measurement
+            </div>
+          )}
 
           {/* Wall features layer */}
           <WallFeatureLayer

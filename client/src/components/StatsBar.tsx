@@ -14,6 +14,8 @@ interface StatsBarProps {
   onGridSizeChange: (size: number) => void;
   onClearAll: () => void;
   onExport: () => void;
+  measureMode: boolean;
+  onToggleMeasure: () => void;
 }
 
 export default function StatsBar({
@@ -26,6 +28,8 @@ export default function StatsBar({
   onGridSizeChange,
   onClearAll,
   onExport,
+  measureMode,
+  onToggleMeasure,
 }: StatsBarProps) {
   const totalSqFt = squareFeetFromInches(roomWidth, roomDepth);
   const usedSqFt = furniture.reduce((sum, f) => sum + squareFeetFromInches(f.width, f.depth), 0);
@@ -97,6 +101,26 @@ export default function StatsBar({
             <option value={24}>24"</option>
           </select>
         </div>
+
+        {/* Tape measure toggle */}
+        <button
+          onClick={onToggleMeasure}
+          title="Tape Measure (click two points to measure distance)"
+          className={`flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md border transition-colors ${
+            measureMode
+              ? 'bg-[#E63946] text-white border-[#E63946] shadow-sm'
+              : 'bg-background text-muted-foreground border-border hover:border-[#E63946] hover:text-[#E63946]'
+          }`}
+        >
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <line x1="1" y1="12" x2="12" y2="1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <line x1="3.5" y1="9.5" x2="5" y2="8" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+            <line x1="6" y1="7" x2="7.5" y2="5.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+            <circle cx="1.5" cy="11.5" r="1.5" fill="currentColor"/>
+            <circle cx="11.5" cy="1.5" r="1.5" fill="currentColor"/>
+          </svg>
+          Measure
+        </button>
 
         <div className="w-px h-5 bg-border" />
 

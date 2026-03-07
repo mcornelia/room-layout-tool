@@ -26,6 +26,9 @@ export default function Home() {
   const [wallFeatures, setWallFeatures] = useState<WallFeature[]>([]);
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
 
+  // Tape measure state
+  const [measureMode, setMeasureMode] = useState(false);
+
   const canvasExportRef = useRef<HTMLDivElement>(null);
 
   const selectedItem = furniture.find(f => f.instanceId === selectedId) ?? null;
@@ -93,6 +96,10 @@ export default function Home() {
     toast.success('Cleared all items', { duration: 1500 });
   }, [furniture, wallFeatures]);
 
+  const handleToggleMeasure = useCallback(() => {
+    setMeasureMode(prev => !prev);
+  }, []);
+
   const handleExport = useCallback(() => {
     toast.info('Export: Use your browser\'s screenshot tool (Ctrl+Shift+S / Cmd+Shift+4) to capture the canvas area.', {
       duration: 4000,
@@ -126,6 +133,10 @@ export default function Home() {
     if (e.key === 'Escape') {
       setSelectedId(null);
       setSelectedFeatureId(null);
+    }
+
+    if (e.key === 'Escape') {
+      setMeasureMode(false);
     }
 
     if (selectedId) {
@@ -179,17 +190,19 @@ export default function Home() {
       </header>
 
       {/* Stats bar */}
-      <StatsBar
-        roomWidth={ROOM_WIDTH}
-        roomDepth={ROOM_DEPTH}
-        furniture={furniture}
-        snapToGrid={snapToGrid}
-        gridSize={gridSize}
-        onSnapToggle={() => setSnapToGrid(p => !p)}
-        onGridSizeChange={setGridSize}
-        onClearAll={handleClearAll}
-        onExport={handleExport}
-      />
+        <StatsBar
+          roomWidth={ROOM_WIDTH}
+          roomDepth={ROOM_DEPTH}
+          furniture={furniture}
+          snapToGrid={snapToGrid}
+          gridSize={gridSize}
+          onSnapToggle={() => setSnapToGrid(p => !p)}
+          onGridSizeChange={setGridSize}
+          onClearAll={handleClearAll}
+          onExport={handleExport}
+          measureMode={measureMode}
+          onToggleMeasure={handleToggleMeasure}
+        />
 
       {/* Main layout */}
       <div className="flex-1 flex overflow-hidden">
@@ -219,6 +232,7 @@ export default function Home() {
           selectedFeatureId={selectedFeatureId}
           onFeaturesChange={setWallFeatures}
           onSelectFeature={handleSelectFeature}
+          measureMode={measureMode}
         />
 
         {/* Right properties panel */}
