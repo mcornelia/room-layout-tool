@@ -2,15 +2,17 @@
 // Philosophy: Professional Floor Plan Tool
 // Layout: Top stats bar, left sidebar (furniture + walls), center canvas, right properties panel
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import { PlacedFurniture, FurnitureTemplate, FURNITURE_TEMPLATES, formatInches, squareFeetFromInches } from '@/lib/furniture';
 import { WallFeature } from '@/lib/wallFeatures';
+import { SavedLayout, autoSave, loadAutoSave } from '@/lib/layoutStorage';
 import RoomCanvas from '@/components/RoomCanvas';
 import FurnitureSidebar from '@/components/FurnitureSidebar';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import StatsBar from '@/components/StatsBar';
+import SaveLoadModal from '@/components/SaveLoadModal';
 
 // Room dimensions in inches (226" wide × 196.5" deep)
 const ROOM_WIDTH = 226;   // 18' 10"
@@ -29,7 +31,27 @@ export default function Home() {
   // Tape measure state
   const [measureMode, setMeasureMode] = useState(false);
 
+  // Save/load state
+  const [showSaveLoad, setShowSaveLoad] = useState(false);
+  const [currentLayoutId, setCurrentLayoutId] = useState<string | null>(null);
+  const [currentLayoutName, setCurrentLayoutName] = useState('');
+
   const canvasExportRef = useRef<HTMLDivElement>(null);
+
+  // Auto-save on every change
+  useEffect(() => {
+    autoSave(furniture, wallFeatures);
+  }, [furniture, wallFeatures]);
+
+  // Restore auto-save on first load
+  useEffect(() => {
+    const saved = loadAutoSave();
+    if (saved && (saved.furniture.length > 0 || saved.wallFeatures.length > 0)) {
+      setFurniture(saved.furniture);
+      setWallFeatures(saved.wallFeatures);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectedItem = furniture.find(f => f.instanceId === selectedId) ?? null;
 
@@ -93,8 +115,26 @@ export default function Home() {
     setWallFeatures([]);
     setSelectedId(null);
     setSelectedFeatureId(null);
+    setCurrentLayoutId(null);
+    setCurrentLayoutName('');
     toast.success('Cleared all items', { duration: 1500 });
   }, [furniture, wallFeatures]);
+
+  const handleSaveLayout = useCallback((layout: SavedLayout) => {
+    setCurrentLayoutId(layout.id);
+    setCurrentLayoutName(layout.name);
+    toast.success(`Layout "${layout.name}" saved`, { duration: 2000 });
+  }, []);
+
+  const handleLoadLayout = useCallback((layout: SavedLayout) => {
+    setFurniture(layout.furniture);
+    setWallFeatures(layout.wallFeatures);
+    setSelectedId(null);
+    setSelectedFeatureId(null);
+    setCurrentLayoutId(layout.id);
+    setCurrentLayoutName(layout.name);
+    toast.success(`Loaded "${layout.name}"`, { duration: 2000 });
+  }, []);
 
   const handleToggleMeasure = useCallback(() => {
     setMeasureMode(prev => !prev);
@@ -180,7 +220,24 @@ export default function Home() {
         </div>
         <div className="w-px h-5 bg-border" />
         <span className="text-xs text-muted-foreground">Bedroom · {formatInches(ROOM_WIDTH)} wide × {formatInches(ROOM_DEPTH)} deep · {(ROOM_WIDTH * ROOM_DEPTH / 144).toFixed(1)} sq ft</span>
+        {currentLayoutName && (
+          <span className="text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full flex items-center gap-1">
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1 7V8h7V7M4.5 1v5M2.5 4l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            {currentLayoutName}
+          </span>
+        )}
         <div className="flex-1" />
+        {/* Save/Load button */}
+        <button
+          onClick={() => setShowSaveLoad(true)}
+          className="flex items-center gap-1.5 text-[11px] font-semibold text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 px-2.5 py-1 rounded-md transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 9V10h8V9M6 2v6M3.5 5.5l2.5 2.5 2.5-2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Layouts
+        </button>
+        <div className="w-px h-5 bg-border" />
         <span className="text-[10px] text-muted-foreground">
           Press <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Del</kbd> to remove ·{' '}
           <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Esc</kbd> to deselect ·{' '}
@@ -246,6 +303,18 @@ export default function Home() {
           onRotate={handleRotate}
         />
       </div>
+
+      {/* Save/Load Modal */}
+      <SaveLoadModal
+        isOpen={showSaveLoad}
+        onClose={() => setShowSaveLoad(false)}
+        furniture={furniture}
+        wallFeatures={wallFeatures}
+        currentLayoutId={currentLayoutId}
+        currentLayoutName={currentLayoutName}
+        onSave={handleSaveLayout}
+        onLoad={handleLoadLayout}
+      />
     </div>
   );
 }
