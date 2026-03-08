@@ -2,7 +2,8 @@
 // Philosophy: Professional Floor Plan Tool
 // Shows selected furniture properties and allows precise editing
 
-import { PlacedFurniture, formatInches, squareFeetFromInches } from '@/lib/furniture';
+import { PlacedFurniture, squareFeetFromInches } from '@/lib/furniture';
+import { useUnit } from '@/contexts/UnitContext';
 import { Trash2, RotateCw, Copy } from 'lucide-react';
 
 interface PropertiesPanelProps {
@@ -78,6 +79,7 @@ export default function PropertiesPanel({
     );
   }
 
+  const { fmt } = useUnit();
   const sqFt = squareFeetFromInches(item.width, item.depth);
 
   return (
@@ -94,7 +96,7 @@ export default function PropertiesPanel({
           <h2 className="text-xs font-semibold text-foreground truncate">{item.name}</h2>
         </div>
         <p className="font-mono text-[10px] text-muted-foreground">
-          {formatInches(item.width)} × {formatInches(item.depth)} · {sqFt.toFixed(1)} sq ft
+          {fmt(item.width)} × {fmt(item.depth)} · {sqFt.toFixed(1)} sq ft
         </p>
       </div>
 
@@ -163,7 +165,7 @@ export default function PropertiesPanel({
           <div className="space-y-0.5">
             <div className="flex justify-between">
               <span className="font-mono text-[10px] text-muted-foreground">Size</span>
-              <span className="font-mono text-[10px] text-foreground">{formatInches(item.width)} × {formatInches(item.depth)}</span>
+              <span className="font-mono text-[10px] text-foreground">{fmt(item.width)} × {fmt(item.depth)}</span>
             </div>
             <div className="flex justify-between">
               <span className="font-mono text-[10px] text-muted-foreground">Area</span>
@@ -171,7 +173,7 @@ export default function PropertiesPanel({
             </div>
             <div className="flex justify-between">
               <span className="font-mono text-[10px] text-muted-foreground">Position</span>
-              <span className="font-mono text-[10px] text-foreground">{formatInches(item.x)}, {formatInches(item.y)}</span>
+              <span className="font-mono text-[10px] text-foreground">{fmt(item.x)}, {fmt(item.y)}</span>
             </div>
           </div>
         </div>

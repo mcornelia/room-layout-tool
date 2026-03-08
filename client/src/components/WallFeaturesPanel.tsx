@@ -3,7 +3,7 @@
 // Sidebar section for adding doors, windows, and cased openings
 
 import { WallFeature, WallFeatureType, WallSide, WALL_FEATURE_COLORS, WALL_LABELS, WALL_FEATURE_DEFAULTS } from '@/lib/wallFeatures';
-import { formatInches } from '@/lib/furniture';
+import { useUnit } from '@/contexts/UnitContext';
 import { nanoid } from 'nanoid';
 
 interface WallFeaturesPanelProps {
@@ -36,6 +36,7 @@ export default function WallFeaturesPanel({
   onFeaturesChange,
   onSelectFeature,
 }: WallFeaturesPanelProps) {
+  const { fmt } = useUnit();
   const selectedFeature = features.find(f => f.instanceId === selectedFeatureId) ?? null;
 
   const wallLength = (wall: WallSide) => wall === 'top' || wall === 'bottom' ? roomWidth : roomDepth;
@@ -114,7 +115,7 @@ export default function WallFeaturesPanel({
                   <span className="text-xs">{f.type === 'door' ? '🚪' : f.type === 'window' ? '🪟' : '⬜'}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-[10px] font-medium text-foreground truncate">{f.label}</div>
-                    <div className="text-[9px] font-mono text-muted-foreground">{WALL_LABELS[f.wall]} · {formatInches(f.length)}</div>
+                    <div className="text-[9px] font-mono text-muted-foreground">{WALL_LABELS[f.wall]} · {fmt(f.length)}</div>
                   </div>
                   <button
                     className="text-muted-foreground hover:text-destructive transition-colors text-xs"
@@ -164,7 +165,7 @@ export default function WallFeaturesPanel({
               }}
             >
               {WALLS.map(({ wall, label }) => (
-                <option key={wall} value={wall}>{label} Wall ({formatInches(wallLength(wall))})</option>
+                <option key={wall} value={wall}>{label} Wall ({fmt(wallLength(wall))})</option>
               ))}
             </select>
           </div>
@@ -172,7 +173,7 @@ export default function WallFeaturesPanel({
           {/* Length */}
           <div className="mb-2">
             <label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">
-              Length (in) — max {formatInches(wallLength(selectedFeature.wall))}
+              Length (in) — max {fmt(wallLength(selectedFeature.wall))}
             </label>
             <div className="flex items-center gap-1.5">
               <input
@@ -187,7 +188,7 @@ export default function WallFeaturesPanel({
                   updateFeature({ ...selectedFeature, length: v });
                 }}
               />
-              <span className="text-[9px] font-mono text-muted-foreground whitespace-nowrap">{formatInches(selectedFeature.length)}</span>
+              <span className="text-[9px] font-mono text-muted-foreground whitespace-nowrap">{fmt(selectedFeature.length)}</span>
             </div>
           </div>
 

@@ -1,8 +1,10 @@
 // Room Layout Tool — StatsBar Component
 // Philosophy: Professional Floor Plan Tool
 // Shows room statistics: total area, used area, free area, item count
+// Includes unit toggle: ft+in ↔ inches only
 
-import { PlacedFurniture, formatInches, squareFeetFromInches } from '@/lib/furniture';
+import { PlacedFurniture, squareFeetFromInches } from '@/lib/furniture';
+import { useUnit } from '@/contexts/UnitContext';
 
 interface StatsBarProps {
   roomWidth: number;
@@ -31,6 +33,8 @@ export default function StatsBar({
   measureMode,
   onToggleMeasure,
 }: StatsBarProps) {
+  const { unitMode, setUnitMode, fmt } = useUnit();
+
   const totalSqFt = squareFeetFromInches(roomWidth, roomDepth);
   const usedSqFt = furniture.reduce((sum, f) => sum + squareFeetFromInches(f.width, f.depth), 0);
   const freeSqFt = Math.max(0, totalSqFt - usedSqFt);
@@ -43,7 +47,7 @@ export default function StatsBar({
         <div className="w-2 h-2 rounded-full bg-primary" />
         <span className="text-xs font-semibold text-foreground">Bedroom</span>
         <span className="font-mono text-[10px] text-muted-foreground">
-          {formatInches(roomWidth)} W × {formatInches(roomDepth)} D
+          {fmt(roomWidth)} W × {fmt(roomDepth)} D
         </span>
       </div>
 
@@ -75,6 +79,33 @@ export default function StatsBar({
 
       {/* Controls */}
       <div className="flex items-center gap-3">
+
+        {/* Unit toggle */}
+        <div className="flex items-center gap-1.5 border border-border rounded-md overflow-hidden">
+          <button
+            onClick={() => setUnitMode('ft-in')}
+            className={`text-[10px] font-semibold px-2 py-1 transition-colors ${
+              unitMode === 'ft-in'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-background text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            ft + in
+          </button>
+          <button
+            onClick={() => setUnitMode('in')}
+            className={`text-[10px] font-semibold px-2 py-1 transition-colors ${
+              unitMode === 'in'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-background text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            in
+          </button>
+        </div>
+
+        <div className="w-px h-5 bg-border" />
+
         {/* Snap to grid */}
         <label className="flex items-center gap-1.5 cursor-pointer">
           <div

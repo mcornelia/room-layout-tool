@@ -7,7 +7,7 @@
 
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { WallFeature, WallSide } from '@/lib/wallFeatures';
-import { formatInches } from '@/lib/furniture';
+import { useUnit } from '@/contexts/UnitContext';
 
 interface WallFeatureLayerProps {
   roomWidth: number;   // inches
@@ -40,6 +40,7 @@ export default function WallFeatureLayer({
   snapToGrid,
   gridSize,
 }: WallFeatureLayerProps) {
+  const { fmt } = useUnit();
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<{
     featureId: string;
@@ -258,7 +259,7 @@ export default function WallFeatureLayer({
 
       // Label — always visible inside the room, with white background pill
       {
-        const labelText = feature.label ? `${feature.label}  ${formatInches(length)}` : formatInches(length);
+        const labelText = feature.label ? `${feature.label}  ${fmt(length)}` : fmt(length);
         // Position label inside the room, below/above the symbol
         const LABEL_OFFSET = 24; // px inside room from wall edge
         const labelY = wall === 'top'
@@ -417,7 +418,7 @@ export default function WallFeatureLayer({
 
       // Label — always visible inside the room, rotated for vertical walls
       {
-        const labelText = feature.label ? `${feature.label}  ${formatInches(length)}` : formatInches(length);
+        const labelText = feature.label ? `${feature.label}  ${fmt(length)}` : fmt(length);
         // Position label inside the room from the wall edge
         const LABEL_OFFSET = 24;
         const cx = wall === 'left'

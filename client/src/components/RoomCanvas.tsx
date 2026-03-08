@@ -4,7 +4,8 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { nanoid } from 'nanoid';
-import { PlacedFurniture, FurnitureTemplate, formatInches } from '@/lib/furniture';
+import { PlacedFurniture, FurnitureTemplate } from '@/lib/furniture';
+import { useUnit } from '@/contexts/UnitContext';
 import { WallFeature } from '@/lib/wallFeatures';
 import WallFeatureLayer from './WallFeatureLayer';
 
@@ -77,6 +78,7 @@ export default function RoomCanvas({
   measureMode,
 }: RoomCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const { fmt, unitMode } = useUnit();
   const containerRef = useRef<HTMLDivElement>(null);
   const itemClickedRef = useRef(false); // flag: true when a furniture item was mousedown'd
   const [scale, setScale] = useState(2); // px per inch
@@ -294,11 +296,7 @@ export default function RoomCanvas({
     const dx = pts[1].x - pts[0].x;
     const dy = pts[1].y - pts[0].y;
     const distIn = Math.sqrt(dx * dx + dy * dy);
-    const feet = Math.floor(distIn / 12);
-    const inches = Math.round((distIn % 12) * 10) / 10;
-    const label = feet > 0
-      ? (inches > 0 ? `${feet}' ${inches}"` : `${feet}'`)
-      : `${inches}"`;
+    const label = fmt(distIn);
     return { pts, distIn, label };
   })();
 
@@ -362,7 +360,7 @@ export default function RoomCanvas({
                 />
                 {isMajor && tick > 0 && (
                   <span className="font-mono text-[9px] absolute -translate-x-1/2" style={{ top: 14, color: 'oklch(0.45 0.015 264)' }}>
-                    {Math.floor(tick / 12)}'
+                    {unitMode === 'in' ? `${tick}"` : `${Math.floor(tick / 12)}'`}
                   </span>
                 )}
               </div>
@@ -396,7 +394,7 @@ export default function RoomCanvas({
                     className="font-mono text-[9px] absolute"
                     style={{ left: 2, top: -8, writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: 'oklch(0.45 0.015 264)' }}
                   >
-                    {Math.floor(tick / 12)}'
+                    {unitMode === 'in' ? `${tick}"` : `${Math.floor(tick / 12)}'`}
                   </span>
                 )}
               </div>
@@ -435,13 +433,13 @@ export default function RoomCanvas({
           <div
             className="absolute bottom-1 left-1/2 -translate-x-1/2 font-mono text-[10px] text-slate-400 pointer-events-none"
           >
-            {formatInches(roomWidth)} wide
+            {fmt(roomWidth)} wide
           </div>
           <div
             className="absolute right-1 top-1/2 font-mono text-[10px] text-slate-400 pointer-events-none"
             style={{ writingMode: 'vertical-rl', transform: 'translateY(-50%) rotate(180deg)' }}
           >
-            {formatInches(roomDepth)} deep
+            {fmt(roomDepth)} deep
           </div>
 
           {/* Furniture items */}
@@ -505,7 +503,7 @@ export default function RoomCanvas({
                         textShadow: '0 0 3px rgba(255,255,255,0.8)',
                       }}
                     >
-                      {formatInches(item.width)} × {formatInches(item.depth)}
+                      {fmt(item.width)} × {fmt(item.depth)}
                     </span>
                   )}
                 </div>
