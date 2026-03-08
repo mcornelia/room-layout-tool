@@ -10,6 +10,7 @@ import {
   loadLayout,
   deleteLayout,
   renameLayout,
+  duplicateLayout,
   formatSavedAt,
 } from '@/lib/layoutStorage';
 import { PlacedFurniture } from '@/lib/furniture';
@@ -47,6 +48,7 @@ export default function SaveLoadModal({
   const [renameValue, setRenameValue] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [justSavedId, setJustSavedId] = useState<string | null>(null);
+  const [justDuplicatedId, setJustDuplicatedId] = useState<string | null>(null);
 
   // Refresh layouts list whenever modal opens or tab changes
   useEffect(() => {
@@ -78,6 +80,15 @@ export default function SaveLoadModal({
     deleteLayout(id);
     setConfirmDeleteId(null);
     refreshLayouts();
+  }, [refreshLayouts]);
+
+  const handleDuplicate = useCallback((id: string) => {
+    const copy = duplicateLayout(id);
+    if (copy) {
+      setJustDuplicatedId(copy.id);
+      refreshLayouts();
+      setTimeout(() => setJustDuplicatedId(null), 2000);
+    }
   }, [refreshLayouts]);
 
   const handleRenameSubmit = useCallback((id: string) => {
@@ -228,7 +239,11 @@ export default function SaveLoadModal({
                   {layouts.map(layout => (
                     <div
                       key={layout.id}
-                      className="group border border-border rounded-lg p-3 hover:border-primary/40 hover:bg-primary/[0.02] transition-all"
+                      className={`group border rounded-lg p-3 transition-all ${
+                          justDuplicatedId === layout.id
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                            : 'border-border hover:border-primary/40 hover:bg-primary/[0.02]'
+                        }`}
                     >
                       {renamingId === layout.id ? (
                         <div className="flex items-center gap-2">
@@ -278,6 +293,18 @@ export default function SaveLoadModal({
 
                           {/* Actions */}
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Duplicate */}
+                            <button
+                              onClick={() => handleDuplicate(layout.id)}
+                              title="Duplicate layout"
+                              className="w-7 h-7 flex items-center justify-center rounded hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                <rect x="1" y="3" width="7" height="8" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+                                <path d="M4 3V2a1 1 0 011-1h5a1 1 0 011 1v7a1 1 0 01-1 1H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                              </svg>
+                            </button>
+
                             {/* Rename */}
                             <button
                               onClick={() => { setRenamingId(layout.id); setRenameValue(layout.name); }}

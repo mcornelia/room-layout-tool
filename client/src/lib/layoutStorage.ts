@@ -110,6 +110,26 @@ export function loadAutoSave(): { furniture: PlacedFurniture[]; wallFeatures: Wa
   }
 }
 
+export function duplicateLayout(id: string): SavedLayout | null {
+  const store = readStore();
+  const original = store.layouts.find(l => l.id === id);
+  if (!original) return null;
+
+  const copy: SavedLayout = {
+    ...original,
+    id: `layout-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: `${original.name} (copy)`,
+    savedAt: new Date().toISOString(),
+    // Deep-clone arrays so the copy is fully independent
+    furniture: JSON.parse(JSON.stringify(original.furniture)),
+    wallFeatures: JSON.parse(JSON.stringify(original.wallFeatures)),
+  };
+
+  store.layouts.push(copy);
+  writeStore(store);
+  return copy;
+}
+
 export function formatSavedAt(isoString: string): string {
   const d = new Date(isoString);
   const now = new Date();
