@@ -152,6 +152,12 @@ export default function Home() {
     toast.success('Room deleted', { duration: 1500 });
   }, [project, setProject]);
 
+  const handleReorderRooms = useCallback((newOrder: string[]) => {
+    const roomMap = new Map(project.rooms.map(r => [r.id, r]));
+    const reordered = newOrder.map(id => roomMap.get(id)).filter(Boolean) as typeof project.rooms;
+    setProject({ rooms: reordered, activeRoomId: project.activeRoomId });
+  }, [project, setProject]);
+
   // ─── Room name inline editing (header) ───────────────────────────────────
 
   const handleRoomNameEdit = useCallback(() => {
@@ -495,6 +501,7 @@ export default function Home() {
         onAdd={handleAddRoom}
         onRename={handleRenameRoom}
         onDelete={handleDeleteRoom}
+        onReorder={handleReorderRooms}
       />
 
       {/* ── Stats bar ── */}
