@@ -2,12 +2,13 @@
 // Philosophy: Professional Floor Plan Tool
 // Layout: Top stats bar, left sidebar (furniture + walls), center canvas, right properties panel
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
-import { PlacedFurniture, FurnitureTemplate, FURNITURE_TEMPLATES, formatInches, squareFeetFromInches } from '@/lib/furniture';
+import { PlacedFurniture, FurnitureTemplate, formatInches } from '@/lib/furniture';
 import { WallFeature } from '@/lib/wallFeatures';
 import { SavedLayout, autoSave, loadAutoSave } from '@/lib/layoutStorage';
+import { useHistory } from '@/hooks/useHistory';
 import RoomCanvas from '@/components/RoomCanvas';
 import FurnitureSidebar from '@/components/FurnitureSidebar';
 import PropertiesPanel from '@/components/PropertiesPanel';
@@ -18,25 +19,37 @@ import SaveLoadModal from '@/components/SaveLoadModal';
 const ROOM_WIDTH = 226;   // 18' 10"
 const ROOM_DEPTH = 196.5; // 16' 4.5"
 
+// The shape tracked by history — furniture + wall features together
+interface LayoutSnapshot {
+  furniture: PlacedFurniture[];
+  wallFeatures: WallFeature[];
+}
+
 export default function Home() {
-  const [furniture, setFurniture] = useState<PlacedFurniture[]>([]);
+  const {
+    state: layout,
+    set: setLayout,
+    replace: replaceLayout,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistory<LayoutSnapshot>({ furniture: [], wallFeatures: [] });
+
+  const furniture = layout.furniture;
+  const wallFeatures = layout.wallFeatures;
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [gridSize, setGridSize] = useState(12); // inches
 
-  // Wall features state
-  const [wallFeatures, setWallFeatures] = useState<WallFeature[]>([]);
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
-
-  // Tape measure state
   const [measureMode, setMeasureMode] = useState(false);
 
   // Save/load state
   const [showSaveLoad, setShowSaveLoad] = useState(false);
   const [currentLayoutId, setCurrentLayoutId] = useState<string | null>(null);
   const [currentLayoutName, setCurrentLayoutName] = useState('');
-
-  const canvasExportRef = useRef<HTMLDivElement>(null);
 
   // Auto-save on every change
   useEffect(() => {
@@ -47,13 +60,15 @@ export default function Home() {
   useEffect(() => {
     const saved = loadAutoSave();
     if (saved && (saved.furniture.length > 0 || saved.wallFeatures.length > 0)) {
-      setFurniture(saved.furniture);
-      setWallFeatures(saved.wallFeatures);
+      // Use replaceLayout so the auto-restore doesn't pollute the undo stack
+      replaceLayout({ furniture: saved.furniture, wallFeatures: saved.wallFeatures });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedItem = furniture.find(f => f.instanceId === selectedId) ?? null;
+
+  // ─── Furniture mutations (all go through setLayout to record history) ─────────
 
   const addFurniture = useCallback((template: FurnitureTemplate, x?: number, y?: number) => {
     const newItem: PlacedFurniture = {
@@ -70,30 +85,39 @@ export default function Home() {
       borderColor: template.borderColor,
       icon: template.icon,
     };
-    setFurniture(prev => [...prev, newItem]);
+    setLayout(prev => ({ ...prev, furniture: [...prev.furniture, newItem] }));
     setSelectedId(newItem.instanceId);
     setSelectedFeatureId(null);
     toast.success(`Added ${template.name}`, { duration: 1500 });
-  }, []);
+  }, [setLayout]);
 
   const handleDrop = useCallback((template: FurnitureTemplate, x: number, y: number) => {
     addFurniture(template, x, y);
   }, [addFurniture]);
 
+  // Called by canvas during drag (live updates, no history entry per tick)
   const handleFurnitureChange = useCallback((updated: PlacedFurniture[]) => {
-    setFurniture(updated);
-  }, []);
+    replaceLayout(prev => ({ ...prev, furniture: updated }));
+  }, [replaceLayout]);
+
+  // Called by canvas at drag-end to commit a history entry
+  const handleFurnitureCommit = useCallback((updated: PlacedFurniture[]) => {
+    setLayout(prev => ({ ...prev, furniture: updated }));
+  }, [setLayout]);
 
   const handleUpdate = useCallback((updated: PlacedFurniture) => {
-    setFurniture(prev => prev.map(f => f.instanceId === updated.instanceId ? updated : f));
-  }, []);
+    setLayout(prev => ({
+      ...prev,
+      furniture: prev.furniture.map(f => f.instanceId === updated.instanceId ? updated : f),
+    }));
+  }, [setLayout]);
 
   const handleDelete = useCallback((id: string) => {
     const item = furniture.find(f => f.instanceId === id);
-    setFurniture(prev => prev.filter(f => f.instanceId !== id));
+    setLayout(prev => ({ ...prev, furniture: prev.furniture.filter(f => f.instanceId !== id) }));
     setSelectedId(null);
     if (item) toast.success(`Removed ${item.name}`, { duration: 1500 });
-  }, [furniture]);
+  }, [furniture, setLayout]);
 
   const handleDuplicate = useCallback((id: string) => {
     const item = furniture.find(f => f.instanceId === id);
@@ -104,21 +128,45 @@ export default function Home() {
       x: Math.min(item.x + 12, ROOM_WIDTH - item.width),
       y: Math.min(item.y + 12, ROOM_DEPTH - item.depth),
     };
-    setFurniture(prev => [...prev, newItem]);
+    setLayout(prev => ({ ...prev, furniture: [...prev.furniture, newItem] }));
     setSelectedId(newItem.instanceId);
     toast.success(`Duplicated ${item.name}`, { duration: 1500 });
-  }, [furniture]);
+  }, [furniture, setLayout]);
+
+  const handleRotate = useCallback((id: string) => {
+    setLayout(prev => ({
+      ...prev,
+      furniture: prev.furniture.map(f => {
+        if (f.instanceId !== id) return f;
+        const newW = Math.min(f.depth, ROOM_WIDTH - f.x);
+        const newD = Math.min(f.width, ROOM_DEPTH - f.y);
+        return { ...f, width: newW, depth: newD, rotation: ((f.rotation ?? 0) + 90) % 360 };
+      }),
+    }));
+  }, [setLayout]);
 
   const handleClearAll = useCallback(() => {
     if (furniture.length === 0 && wallFeatures.length === 0) return;
-    setFurniture([]);
-    setWallFeatures([]);
+    setLayout({ furniture: [], wallFeatures: [] });
     setSelectedId(null);
     setSelectedFeatureId(null);
     setCurrentLayoutId(null);
     setCurrentLayoutName('');
     toast.success('Cleared all items', { duration: 1500 });
-  }, [furniture, wallFeatures]);
+  }, [furniture, wallFeatures, setLayout]);
+
+  // ─── Wall feature mutations ───────────────────────────────────────────────────
+
+  const handleWallFeaturesChange = useCallback((updated: WallFeature[]) => {
+    setLayout(prev => ({ ...prev, wallFeatures: updated }));
+  }, [setLayout]);
+
+  // Live drag updates (no history entry per tick)
+  const handleWallFeaturesLive = useCallback((updated: WallFeature[]) => {
+    replaceLayout(prev => ({ ...prev, wallFeatures: updated }));
+  }, [replaceLayout]);
+
+  // ─── Save / Load ──────────────────────────────────────────────────────────────
 
   const handleSaveLayout = useCallback((layout: SavedLayout) => {
     setCurrentLayoutId(layout.id);
@@ -127,35 +175,51 @@ export default function Home() {
   }, []);
 
   const handleLoadLayout = useCallback((layout: SavedLayout) => {
-    setFurniture(layout.furniture);
-    setWallFeatures(layout.wallFeatures);
+    setLayout({ furniture: layout.furniture, wallFeatures: layout.wallFeatures });
     setSelectedId(null);
     setSelectedFeatureId(null);
     setCurrentLayoutId(layout.id);
     setCurrentLayoutName(layout.name);
     toast.success(`Loaded "${layout.name}"`, { duration: 2000 });
-  }, []);
+  }, [setLayout]);
+
+  // ─── Measure ─────────────────────────────────────────────────────────────────
 
   const handleToggleMeasure = useCallback(() => {
     setMeasureMode(prev => !prev);
   }, []);
 
-  const handleExport = useCallback(() => {
-    toast.info('Export: Use your browser\'s screenshot tool (Ctrl+Shift+S / Cmd+Shift+4) to capture the canvas area.', {
-      duration: 4000,
-    });
-  }, []);
+  // ─── Export ──────────────────────────────────────────────────────────────────
 
-  const handleRotate = useCallback((id: string) => {
-    setFurniture(prev => prev.map(f => {
-      if (f.instanceId !== id) return f;
-      const newW = Math.min(f.depth, ROOM_WIDTH - f.x);
-      const newD = Math.min(f.width, ROOM_DEPTH - f.y);
-      return { ...f, width: newW, depth: newD, rotation: ((f.rotation ?? 0) + 90) % 360 };
-    }));
-  }, []);
+  const handleExport = useCallback(async () => {
+    const canvasEl = document.getElementById('room-canvas-export-target');
+    if (!canvasEl) {
+      toast.error('Canvas not found');
+      return;
+    }
+    toast.loading('Generating PNG…', { id: 'export' });
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(canvasEl as HTMLElement, {
+        backgroundColor: '#F4F5F7',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `room-layout-${currentLayoutName || 'bedroom'}.png`;
+      a.click();
+      toast.success('PNG exported!', { id: 'export', duration: 2000 });
+    } catch (err) {
+      console.error(err);
+      toast.error('Export failed — try a screenshot instead', { id: 'export', duration: 3000 });
+    }
+  }, [currentLayoutName]);
 
-  // When selecting a furniture item, deselect wall feature and vice versa
+  // ─── Selection helpers ────────────────────────────────────────────────────────
+
   const handleSelectFurniture = useCallback((id: string | null) => {
     setSelectedId(id);
     if (id) setSelectedFeatureId(null);
@@ -166,16 +230,31 @@ export default function Home() {
     if (id) setSelectedId(null);
   }, []);
 
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────────
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const tag = (e.target as HTMLElement).tagName;
     const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
-    if (e.key === 'Escape') {
-      setSelectedId(null);
-      setSelectedFeatureId(null);
+    // Undo: Ctrl+Z
+    if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && !e.shiftKey && !isInput) {
+      e.preventDefault();
+      undo();
+      return;
+    }
+    // Redo: Ctrl+Y or Ctrl+Shift+Z
+    if (((e.key === 'y' || e.key === 'Y') && (e.ctrlKey || e.metaKey)) ||
+        ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
+      if (!isInput) {
+        e.preventDefault();
+        redo();
+        return;
+      }
     }
 
     if (e.key === 'Escape') {
+      setSelectedId(null);
+      setSelectedFeatureId(null);
       setMeasureMode(false);
     }
 
@@ -194,10 +273,10 @@ export default function Home() {
     }
 
     if (selectedFeatureId && (e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
-      setWallFeatures(prev => prev.filter(f => f.instanceId !== selectedFeatureId));
+      handleWallFeaturesChange(wallFeatures.filter(f => f.instanceId !== selectedFeatureId));
       setSelectedFeatureId(null);
     }
-  }, [selectedId, selectedFeatureId, handleDelete, handleDuplicate, handleRotate]);
+  }, [selectedId, selectedFeatureId, wallFeatures, undo, redo, handleDelete, handleDuplicate, handleRotate, handleWallFeaturesChange]);
 
   return (
     <div
@@ -227,6 +306,33 @@ export default function Home() {
           </span>
         )}
         <div className="flex-1" />
+
+        {/* Undo / Redo buttons */}
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+            className="flex items-center justify-center w-7 h-7 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M2 5H8.5C10.4 5 12 6.6 12 8.5S10.4 12 8.5 12H5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M4.5 2.5L2 5l2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Y)"
+            className="flex items-center justify-center w-7 h-7 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M12 5H5.5C3.6 5 2 6.6 2 8.5S3.6 12 5.5 12H9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M9.5 2.5L12 5l-2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
         {/* Save/Load button */}
         <button
           onClick={() => setShowSaveLoad(true)}
@@ -239,27 +345,26 @@ export default function Home() {
         </button>
         <div className="w-px h-5 bg-border" />
         <span className="text-[10px] text-muted-foreground">
-          Press <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Del</kbd> to remove ·{' '}
-          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Esc</kbd> to deselect ·{' '}
-          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Ctrl+D</kbd> to duplicate ·{' '}
-          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">R</kbd> to rotate
+          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Del</kbd> remove ·{' '}
+          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Ctrl+Z</kbd> undo ·{' '}
+          <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">R</kbd> rotate
         </span>
       </header>
 
       {/* Stats bar */}
-        <StatsBar
-          roomWidth={ROOM_WIDTH}
-          roomDepth={ROOM_DEPTH}
-          furniture={furniture}
-          snapToGrid={snapToGrid}
-          gridSize={gridSize}
-          onSnapToggle={() => setSnapToGrid(p => !p)}
-          onGridSizeChange={setGridSize}
-          onClearAll={handleClearAll}
-          onExport={handleExport}
-          measureMode={measureMode}
-          onToggleMeasure={handleToggleMeasure}
-        />
+      <StatsBar
+        roomWidth={ROOM_WIDTH}
+        roomDepth={ROOM_DEPTH}
+        furniture={furniture}
+        snapToGrid={snapToGrid}
+        gridSize={gridSize}
+        onSnapToggle={() => setSnapToGrid(p => !p)}
+        onGridSizeChange={setGridSize}
+        onClearAll={handleClearAll}
+        onExport={handleExport}
+        measureMode={measureMode}
+        onToggleMeasure={handleToggleMeasure}
+      />
 
       {/* Main layout */}
       <div className="flex-1 flex overflow-hidden">
@@ -270,7 +375,7 @@ export default function Home() {
           selectedFeatureId={selectedFeatureId}
           roomWidth={ROOM_WIDTH}
           roomDepth={ROOM_DEPTH}
-          onWallFeaturesChange={setWallFeatures}
+          onWallFeaturesChange={handleWallFeaturesChange}
           onSelectFeature={handleSelectFeature}
         />
 
@@ -281,13 +386,15 @@ export default function Home() {
           furniture={furniture}
           selectedId={selectedId}
           onFurnitureChange={handleFurnitureChange}
+          onFurnitureCommit={handleFurnitureCommit}
           onSelect={handleSelectFurniture}
           onDrop={handleDrop}
           snapToGrid={snapToGrid}
           gridSize={gridSize}
           wallFeatures={wallFeatures}
           selectedFeatureId={selectedFeatureId}
-          onFeaturesChange={setWallFeatures}
+          onFeaturesChange={handleWallFeaturesChange}
+          onFeaturesLive={handleWallFeaturesLive}
           onSelectFeature={handleSelectFeature}
           measureMode={measureMode}
         />

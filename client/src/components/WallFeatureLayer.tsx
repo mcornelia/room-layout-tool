@@ -17,6 +17,7 @@ interface WallFeatureLayerProps {
   selectedFeatureId: string | null;
   onSelectFeature: (id: string | null) => void;
   onFeaturesChange: (features: WallFeature[]) => void;
+  onFeaturesLive?: (features: WallFeature[]) => void; // live drag, no history entry
   snapToGrid: boolean;
   gridSize: number;
 }
@@ -35,6 +36,7 @@ export default function WallFeatureLayer({
   selectedFeatureId,
   onSelectFeature,
   onFeaturesChange,
+  onFeaturesLive,
   snapToGrid,
   gridSize,
 }: WallFeatureLayerProps) {
@@ -67,12 +69,19 @@ export default function WallFeatureLayer({
         ? (e.clientX - dragging.startMousePos) / scale
         : (e.clientY - dragging.startMousePos) / scale;
       const newOffset = snap(Math.max(0, Math.min(maxLen - feature.length, dragging.startOffset + delta)));
-      onFeaturesChange(features.map(f =>
+      const updated = features.map(f =>
         f.instanceId === dragging.featureId ? { ...f, offset: newOffset } : f
-      ));
+      );
+      // Use live update (no history entry) during drag
+      if (onFeaturesLive) onFeaturesLive(updated);
+      else onFeaturesChange(updated);
     };
 
-    const handleMouseUp = () => setDragging(null);
+    const handleMouseUp = () => {
+      // Commit final position to history on drag end
+      onFeaturesChange(features);
+      setDragging(null);
+    };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {

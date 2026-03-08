@@ -14,6 +14,7 @@ interface RoomCanvasProps {
   furniture: PlacedFurniture[];
   selectedId: string | null;
   onFurnitureChange: (furniture: PlacedFurniture[]) => void;
+  onFurnitureCommit?: (furniture: PlacedFurniture[]) => void; // called on drag-end to record history
   onSelect: (id: string | null) => void;
   onDrop: (template: FurnitureTemplate, x: number, y: number) => void;
   snapToGrid: boolean;
@@ -22,6 +23,7 @@ interface RoomCanvasProps {
   wallFeatures: WallFeature[];
   selectedFeatureId: string | null;
   onFeaturesChange: (features: WallFeature[]) => void;
+  onFeaturesLive?: (features: WallFeature[]) => void; // live drag updates without history
   onSelectFeature: (id: string | null) => void;
   // Tape measure
   measureMode: boolean;
@@ -62,6 +64,7 @@ export default function RoomCanvas({
   furniture,
   selectedId,
   onFurnitureChange,
+  onFurnitureCommit,
   onSelect,
   onDrop,
   snapToGrid,
@@ -69,6 +72,7 @@ export default function RoomCanvas({
   wallFeatures,
   selectedFeatureId,
   onFeaturesChange,
+  onFeaturesLive,
   onSelectFeature,
   measureMode,
 }: RoomCanvasProps) {
@@ -171,6 +175,10 @@ export default function RoomCanvas({
     };
 
     const handleMouseUp = () => {
+      // Commit the final position to history on drag/resize end
+      if (interaction && onFurnitureCommit) {
+        onFurnitureCommit(furniture);
+      }
       setInteraction(null);
     };
 
@@ -404,6 +412,7 @@ export default function RoomCanvas({
 
         {/* Room canvas */}
         <div
+          id="room-canvas-export-target"
           ref={canvasRef}
           className={`relative bg-white border-2 overflow-hidden ${dragOver ? 'border-primary border-dashed' : 'border-slate-300'}`}
           style={{
@@ -670,6 +679,7 @@ export default function RoomCanvas({
             selectedFeatureId={selectedFeatureId}
             onSelectFeature={onSelectFeature}
             onFeaturesChange={onFeaturesChange}
+            onFeaturesLive={onFeaturesLive}
             snapToGrid={snapToGrid}
             gridSize={gridSize}
           />
