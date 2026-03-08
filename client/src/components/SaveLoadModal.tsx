@@ -25,6 +25,8 @@ interface SaveLoadModalProps {
   currentLayoutId: string | null;
   currentLayoutName: string;
   roomName?: string;
+  roomWidth?: number;
+  roomDepth?: number;
   // Callbacks
   onSave: (layout: SavedLayout) => void;
   onLoad: (layout: SavedLayout) => void;
@@ -40,6 +42,8 @@ export default function SaveLoadModal({
   currentLayoutId,
   currentLayoutName,
   roomName,
+  roomWidth,
+  roomDepth,
   onSave,
   onLoad,
 }: SaveLoadModalProps) {
@@ -66,12 +70,12 @@ export default function SaveLoadModal({
 
   const handleSave = useCallback(() => {
     const name = saveName.trim() || 'Untitled Layout';
-    const layout = saveLayout(name, furniture, wallFeatures, currentLayoutId ?? undefined, roomName);
+    const layout = saveLayout(name, furniture, wallFeatures, currentLayoutId ?? undefined, roomName, roomWidth, roomDepth);
     setJustSavedId(layout.id);
     refreshLayouts();
     onSave(layout);
     setTimeout(() => setJustSavedId(null), 2000);
-  }, [saveName, furniture, wallFeatures, currentLayoutId, roomName, onSave, refreshLayouts]);
+  }, [saveName, furniture, wallFeatures, currentLayoutId, roomName, roomWidth, roomDepth, onSave, refreshLayouts]);
 
   const handleLoad = useCallback((layout: SavedLayout) => {
     onLoad(layout);

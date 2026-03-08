@@ -5,7 +5,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
-import { PlacedFurniture, FurnitureTemplate, formatInches } from '@/lib/furniture';
+import { PlacedFurniture, FurnitureTemplate } from '@/lib/furniture';
 import { exportPrintReady } from '@/lib/printExport';
 import { useUnit } from '@/contexts/UnitContext';
 import { WallFeature } from '@/lib/wallFeatures';
@@ -16,10 +16,11 @@ import FurnitureSidebar from '@/components/FurnitureSidebar';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import StatsBar from '@/components/StatsBar';
 import SaveLoadModal from '@/components/SaveLoadModal';
+import RoomDimensionsEditor from '@/components/RoomDimensionsEditor';
 
-// Room dimensions in inches (226" wide × 196.5" deep)
-const ROOM_WIDTH = 226;   // 18' 10"
-const ROOM_DEPTH = 196.5; // 16' 4.5"
+// Default room dimensions in inches (226" wide × 196.5" deep = 18' 10" × 16' 4.5")
+const DEFAULT_ROOM_WIDTH = 226;
+const DEFAULT_ROOM_DEPTH = 196.5;
 
 // The shape tracked by history — furniture + wall features together
 interface LayoutSnapshot {
@@ -48,6 +49,10 @@ export default function Home() {
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [measureMode, setMeasureMode] = useState(false);
 
+  // Room dimensions (user-editable)
+  const [roomWidth, setRoomWidth] = useState(DEFAULT_ROOM_WIDTH);
+  const [roomDepth, setRoomDepth] = useState(DEFAULT_ROOM_DEPTH);
+
   // Save/load state
   const [showSaveLoad, setShowSaveLoad] = useState(false);
   const [currentLayoutId, setCurrentLayoutId] = useState<string | null>(null);
@@ -60,19 +65,19 @@ export default function Home() {
 
   // Auto-save on every change
   useEffect(() => {
-    autoSave(furniture, wallFeatures, roomName);
-  }, [furniture, wallFeatures, roomName]);
+    autoSave(furniture, wallFeatures, roomName, roomWidth, roomDepth);
+  }, [furniture, wallFeatures, roomName, roomWidth, roomDepth]);
 
   // Restore auto-save on first load
   useEffect(() => {
     const saved = loadAutoSave();
-    if (saved && (saved.furniture.length > 0 || saved.wallFeatures.length > 0)) {
-      // Use replaceLayout so the auto-restore doesn't pollute the undo stack
-      replaceLayout({ furniture: saved.furniture, wallFeatures: saved.wallFeatures });
-      if (saved.roomName) {
-        setRoomName(saved.roomName);
-        setRoomNameDraft(saved.roomName);
+    if (saved) {
+      if (saved.furniture.length > 0 || saved.wallFeatures.length > 0) {
+        replaceLayout({ furniture: saved.furniture, wallFeatures: saved.wallFeatures });
       }
+      if (saved.roomName) { setRoomName(saved.roomName); setRoomNameDraft(saved.roomName); }
+      if (saved.roomWidth && saved.roomWidth >= 24) setRoomWidth(saved.roomWidth);
+      if (saved.roomDepth && saved.roomDepth >= 24) setRoomDepth(saved.roomDepth);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -87,8 +92,8 @@ export default function Home() {
       templateId: template.id,
       name: template.name,
       category: template.category,
-      x: x ?? Math.max(0, (ROOM_WIDTH - template.defaultWidth) / 2),
-      y: y ?? Math.max(0, (ROOM_DEPTH - template.defaultDepth) / 2),
+      x: x ?? Math.max(0, (roomWidth - template.defaultWidth) / 2),
+      y: y ?? Math.max(0, (roomDepth - template.defaultDepth) / 2),
       width: template.defaultWidth,
       depth: template.defaultDepth,
       rotation: 0,
@@ -100,7 +105,7 @@ export default function Home() {
     setSelectedId(newItem.instanceId);
     setSelectedFeatureId(null);
     toast.success(`Added ${template.name}`, { duration: 1500 });
-  }, [setLayout]);
+  }, [roomWidth, roomDepth, setLayout]);
 
   const handleDrop = useCallback((template: FurnitureTemplate, x: number, y: number) => {
     addFurniture(template, x, y);
@@ -136,25 +141,25 @@ export default function Home() {
     const newItem: PlacedFurniture = {
       ...item,
       instanceId: nanoid(),
-      x: Math.min(item.x + 12, ROOM_WIDTH - item.width),
-      y: Math.min(item.y + 12, ROOM_DEPTH - item.depth),
+      x: Math.min(item.x + 12, roomWidth - item.width),
+      y: Math.min(item.y + 12, roomDepth - item.depth),
     };
     setLayout(prev => ({ ...prev, furniture: [...prev.furniture, newItem] }));
     setSelectedId(newItem.instanceId);
     toast.success(`Duplicated ${item.name}`, { duration: 1500 });
-  }, [furniture, setLayout]);
+  }, [furniture, roomWidth, roomDepth, setLayout]);
 
   const handleRotate = useCallback((id: string) => {
     setLayout(prev => ({
       ...prev,
       furniture: prev.furniture.map(f => {
         if (f.instanceId !== id) return f;
-        const newW = Math.min(f.depth, ROOM_WIDTH - f.x);
-        const newD = Math.min(f.width, ROOM_DEPTH - f.y);
+        const newW = Math.min(f.depth, roomWidth - f.x);
+        const newD = Math.min(f.width, roomDepth - f.y);
         return { ...f, width: newW, depth: newD, rotation: ((f.rotation ?? 0) + 90) % 360 };
       }),
     }));
-  }, [setLayout]);
+  }, [roomWidth, roomDepth, setLayout]);
 
   const handleClearAll = useCallback(() => {
     if (furniture.length === 0 && wallFeatures.length === 0) return;
@@ -173,7 +178,7 @@ export default function Home() {
   }, [roomName]);
 
   const handleRoomNameCommit = useCallback(() => {
-    const trimmed = roomNameDraft.trim() || 'Bedroom';
+    const trimmed = roomNameDraft.trim() || 'Room';
     setRoomName(trimmed);
     setRoomNameDraft(trimmed);
     setEditingRoomName(false);
@@ -186,6 +191,13 @@ export default function Home() {
       setEditingRoomName(false);
     }
   }, [roomName, handleRoomNameCommit]);
+
+  // Room dimensions change
+  const handleDimensionsChange = useCallback((w: number, d: number) => {
+    setRoomWidth(w);
+    setRoomDepth(d);
+    toast.success(`Room resized to ${Math.round(w)}" × ${Math.round(d)}"`, { duration: 2000 });
+  }, []);
 
   // ─── Wall feature mutations ───────────────────────────────────────────────────
 
@@ -203,10 +215,7 @@ export default function Home() {
   const handleSaveLayout = useCallback((layout: SavedLayout) => {
     setCurrentLayoutId(layout.id);
     setCurrentLayoutName(layout.name);
-    if (layout.roomName) {
-      setRoomName(layout.roomName);
-      setRoomNameDraft(layout.roomName);
-    }
+    if (layout.roomName) { setRoomName(layout.roomName); setRoomNameDraft(layout.roomName); }
     toast.success(`Layout "${layout.name}" saved`, { duration: 2000 });
   }, []);
 
@@ -216,10 +225,9 @@ export default function Home() {
     setSelectedFeatureId(null);
     setCurrentLayoutId(layout.id);
     setCurrentLayoutName(layout.name);
-    if (layout.roomName) {
-      setRoomName(layout.roomName);
-      setRoomNameDraft(layout.roomName);
-    }
+    if (layout.roomName) { setRoomName(layout.roomName); setRoomNameDraft(layout.roomName); }
+    if (layout.roomWidth && layout.roomWidth >= 24) setRoomWidth(layout.roomWidth);
+    if (layout.roomDepth && layout.roomDepth >= 24) setRoomDepth(layout.roomDepth);
     toast.success(`Loaded "${layout.name}"`, { duration: 2000 });
   }, [setLayout]);
 
@@ -236,10 +244,10 @@ export default function Home() {
     toast.loading('Generating print-ready PNG…', { id: 'export' });
     try {
       await exportPrintReady({
-        layoutName: currentLayoutName || 'Bedroom Layout',
+        layoutName: currentLayoutName || '',
         roomName,
-        roomWidth: ROOM_WIDTH,
-        roomDepth: ROOM_DEPTH,
+        roomWidth,
+        roomDepth,
         furniture,
         wallFeatures,
         unitMode: unitMode === 'in' ? 'in' : 'ft',
@@ -249,7 +257,7 @@ export default function Home() {
       console.error(err);
       toast.error('Export failed — try a screenshot instead', { id: 'export', duration: 3000 });
     }
-  }, [currentLayoutName, roomName, furniture, wallFeatures, unitMode]);
+  }, [currentLayoutName, roomName, roomWidth, roomDepth, furniture, wallFeatures, unitMode]);
 
   // ─── Selection helpers ────────────────────────────────────────────────────────
 
@@ -318,9 +326,10 @@ export default function Home() {
       tabIndex={0}
       style={{ outline: 'none' }}
     >
-        {/* Top header */}
+      {/* Top header */}
       <header className="h-10 bg-white border-b border-border flex items-center px-4 gap-3 flex-shrink-0">
-        <div className="flex items-center gap-2">
+        {/* Logo + app name */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           <div className="w-5 h-5 rounded bg-primary flex items-center justify-center">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <rect x="1" y="1" width="10" height="10" rx="1" stroke="white" strokeWidth="1.5" fill="none"/>
@@ -330,7 +339,9 @@ export default function Home() {
           </div>
           <span className="text-sm font-semibold text-foreground">Room Layout Tool</span>
         </div>
-        <div className="w-px h-5 bg-border" />
+
+        <div className="w-px h-5 bg-border flex-shrink-0" />
+
         {/* Editable room name */}
         {editingRoomName ? (
           <input
@@ -340,13 +351,13 @@ export default function Home() {
             onBlur={handleRoomNameCommit}
             onKeyDown={handleRoomNameKeyDown}
             autoFocus
-            className="text-sm font-semibold text-foreground border-b-2 border-primary bg-transparent focus:outline-none w-40 px-0.5"
+            className="text-sm font-semibold text-foreground border-b-2 border-primary bg-transparent focus:outline-none w-40 px-0.5 flex-shrink-0"
           />
         ) : (
           <button
             onClick={handleRoomNameEdit}
             title="Click to rename room"
-            className="group flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors"
+            className="group flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors flex-shrink-0"
           >
             <span>{roomName}</span>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="opacity-0 group-hover:opacity-60 transition-opacity">
@@ -354,13 +365,24 @@ export default function Home() {
             </svg>
           </button>
         )}
-        <span className="text-xs text-muted-foreground">{formatInches(ROOM_WIDTH)} wide × {formatInches(ROOM_DEPTH)} deep · {(ROOM_WIDTH * ROOM_DEPTH / 144).toFixed(1)} sq ft</span>
+
+        {/* Editable room dimensions */}
+        <RoomDimensionsEditor
+          roomWidth={roomWidth}
+          roomDepth={roomDepth}
+          onChange={handleDimensionsChange}
+        />
+
+        {/* Current layout badge */}
         {currentLayoutName && (
-          <span className="text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full flex items-center gap-1">
-            <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1 7V8h7V7M4.5 1v5M2.5 4l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <span className="text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0">
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+              <path d="M1 7V8h7V7M4.5 1v5M2.5 4l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
             {currentLayoutName}
           </span>
         )}
+
         <div className="flex-1" />
 
         {/* Undo / Redo buttons */}
@@ -399,6 +421,7 @@ export default function Home() {
           </svg>
           Layouts
         </button>
+
         <div className="w-px h-5 bg-border" />
         <span className="text-[10px] text-muted-foreground">
           <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[9px]">Del</kbd> remove ·{' '}
@@ -409,8 +432,8 @@ export default function Home() {
 
       {/* Stats bar */}
       <StatsBar
-        roomWidth={ROOM_WIDTH}
-        roomDepth={ROOM_DEPTH}
+        roomWidth={roomWidth}
+        roomDepth={roomDepth}
         furniture={furniture}
         snapToGrid={snapToGrid}
         gridSize={gridSize}
@@ -429,16 +452,16 @@ export default function Home() {
           onAddFurniture={addFurniture}
           wallFeatures={wallFeatures}
           selectedFeatureId={selectedFeatureId}
-          roomWidth={ROOM_WIDTH}
-          roomDepth={ROOM_DEPTH}
+          roomWidth={roomWidth}
+          roomDepth={roomDepth}
           onWallFeaturesChange={handleWallFeaturesChange}
           onSelectFeature={handleSelectFeature}
         />
 
         {/* Canvas */}
         <RoomCanvas
-          roomWidth={ROOM_WIDTH}
-          roomDepth={ROOM_DEPTH}
+          roomWidth={roomWidth}
+          roomDepth={roomDepth}
           furniture={furniture}
           selectedId={selectedId}
           onFurnitureChange={handleFurnitureChange}
@@ -458,8 +481,8 @@ export default function Home() {
         {/* Right properties panel */}
         <PropertiesPanel
           item={selectedItem}
-          roomWidth={ROOM_WIDTH}
-          roomDepth={ROOM_DEPTH}
+          roomWidth={roomWidth}
+          roomDepth={roomDepth}
           onUpdate={handleUpdate}
           onDelete={handleDelete}
           onDuplicate={handleDuplicate}
@@ -467,19 +490,21 @@ export default function Home() {
         />
       </div>
 
-        {showSaveLoad && (
-          <SaveLoadModal
-            isOpen={showSaveLoad}
-            onClose={() => setShowSaveLoad(false)}
-            furniture={furniture}
-            wallFeatures={wallFeatures}
-            currentLayoutId={currentLayoutId}
-            currentLayoutName={currentLayoutName}
-            roomName={roomName}
-            onSave={handleSaveLayout}
-            onLoad={handleLoadLayout}
-          />
-        )}
+      {showSaveLoad && (
+        <SaveLoadModal
+          isOpen={showSaveLoad}
+          onClose={() => setShowSaveLoad(false)}
+          furniture={furniture}
+          wallFeatures={wallFeatures}
+          currentLayoutId={currentLayoutId}
+          currentLayoutName={currentLayoutName}
+          roomName={roomName}
+          roomWidth={roomWidth}
+          roomDepth={roomDepth}
+          onSave={handleSaveLayout}
+          onLoad={handleLoadLayout}
+        />
+      )}
     </div>
   );
 }

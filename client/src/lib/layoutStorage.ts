@@ -14,7 +14,9 @@ export interface SavedLayout {
   savedAt: string; // ISO date string
   furniture: PlacedFurniture[];
   wallFeatures: WallFeature[];
-  roomName?: string; // user-defined room title shown in export
+  roomName?: string;  // user-defined room title shown in export
+  roomWidth?: number; // room width in inches
+  roomDepth?: number; // room depth in inches
   thumbnail?: string; // future use
 }
 
@@ -47,7 +49,9 @@ export function saveLayout(
   furniture: PlacedFurniture[],
   wallFeatures: WallFeature[],
   existingId?: string,
-  roomName?: string
+  roomName?: string,
+  roomWidth?: number,
+  roomDepth?: number
 ): SavedLayout {
   const store = readStore();
   const id = existingId ?? `layout-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -58,6 +62,8 @@ export function saveLayout(
     furniture,
     wallFeatures,
     roomName,
+    roomWidth,
+    roomDepth,
   };
 
   const idx = store.layouts.findIndex(l => l.id === id);
@@ -95,19 +101,21 @@ export function renameLayout(id: string, newName: string): void {
 export function autoSave(
   furniture: PlacedFurniture[],
   wallFeatures: WallFeature[],
-  roomName?: string
+  roomName?: string,
+  roomWidth?: number,
+  roomDepth?: number
 ): void {
   try {
     localStorage.setItem(
       AUTOSAVE_KEY,
-      JSON.stringify({ furniture, wallFeatures, roomName, savedAt: new Date().toISOString() })
+      JSON.stringify({ furniture, wallFeatures, roomName, roomWidth, roomDepth, savedAt: new Date().toISOString() })
     );
   } catch {
     // Ignore storage quota errors
   }
 }
 
-export function loadAutoSave(): { furniture: PlacedFurniture[]; wallFeatures: WallFeature[]; roomName?: string } | null {
+export function loadAutoSave(): { furniture: PlacedFurniture[]; wallFeatures: WallFeature[]; roomName?: string; roomWidth?: number; roomDepth?: number } | null {
   try {
     const raw = localStorage.getItem(AUTOSAVE_KEY);
     if (!raw) return null;
