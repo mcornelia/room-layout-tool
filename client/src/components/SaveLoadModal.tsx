@@ -1,8 +1,9 @@
 // Room Layout Tool — SaveLoadModal Component
 // Philosophy: Professional Floor Plan Tool
-// Handles: saving named multi-room projects, listing, loading, renaming, duplicating, and deleting
+// Handles: saving named multi-room projects, listing, loading, renaming, duplicating, deleting,
+//          exporting to .rlt file, and importing from .rlt file
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Room,
   SavedLayout,
@@ -31,6 +32,38 @@ interface SaveLoadModalProps {
 
 type Tab = 'save' | 'load';
 
+// ─── Export helpers ────────────────────────────────────────────────────────────
+
+function exportLayoutToFile(layout: SavedLayout) {
+  const exportData = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    layout,
+  };
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = layout.name.replace(/[^a-z0-9_\-\s]/gi, '').trim().replace(/\s+/g, '_') || 'project';
+  a.href = url;
+  a.download = `${safeName}.rlt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportCurrentToFile(name: string, rooms: Room[], activeRoomId: string) {
+  const layout: SavedLayout = {
+    id: `export_${Date.now()}`,
+    name: name.trim() || 'Untitled Project',
+    savedAt: new Date().toISOString(),
+    rooms,
+    activeRoomId,
+  };
+  exportLayoutToFile(layout);
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function SaveLoadModal({
   isOpen,
   onClose,
@@ -49,11 +82,16 @@ export default function SaveLoadModal({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [justSavedId, setJustSavedId] = useState<string | null>(null);
   const [justDuplicatedId, setJustDuplicatedId] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setLayouts(listLayouts());
       setSaveName(currentLayoutName || '');
+      setImportError(null);
+      setImportSuccess(null);
     }
   }, [isOpen, currentLayoutName]);
 
@@ -64,7 +102,6 @@ export default function SaveLoadModal({
   const handleSave = useCallback(() => {
     const name = saveName.trim() || 'Untitled Project';
 
-    // Generate thumbnails for each room
     const roomsWithThumbs: Room[] = rooms.map(room => ({
       ...room,
       thumbnail: generateThumbnail({
@@ -109,13 +146,56 @@ export default function SaveLoadModal({
     refreshLayouts();
   }, [renameValue, refreshLayouts]);
 
+  // ─── Import handler ──────────────────────────────────────────────────────────
+
+  const handleImportFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError(null);
+    setImportSuccess(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const text = ev.target?.result as string;
+        const parsed = JSON.parse(text);
+
+        // Support both wrapped format { version, layout } and raw SavedLayout
+        const layout: SavedLayout = parsed.layout ?? parsed;
+
+        if (!layout || !layout.rooms || !Array.isArray(layout.rooms)) {
+          throw new Error('Invalid file format — missing rooms data.');
+        }
+        if (!layout.name || typeof layout.name !== 'string') {
+          throw new Error('Invalid file format — missing project name.');
+        }
+
+        // Save as a new local layout (give it a fresh ID to avoid collisions)
+        const imported = saveLayout(
+          layout.name,
+          layout.rooms,
+          layout.activeRoomId ?? layout.rooms[0]?.id ?? '',
+        );
+
+        refreshLayouts();
+        setImportSuccess(`"${imported.name}" imported successfully! Switch to the Load tab to open it.`);
+        setTab('load');
+      } catch (err: any) {
+        setImportError(err?.message ?? 'Could not read the file. Make sure it is a valid .rlt file.');
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset input so the same file can be re-imported if needed
+    e.target.value = '';
+  }, [refreshLayouts]);
+
   if (!isOpen) return null;
 
   const totalItems = rooms.reduce(
     (sum, r) => sum + r.furniture.length + r.wallFeatures.length, 0
   );
 
-  // Primary thumbnail = active room's thumbnail (or first room)
   const primaryRoom = rooms.find(r => r.id === activeRoomId) ?? rooms[0];
 
   return (
@@ -132,7 +212,7 @@ export default function SaveLoadModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <div>
             <h2 className="text-sm font-bold text-foreground tracking-tight">Projects</h2>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Save and restore your multi-room projects</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Save, restore, and share your multi-room projects</p>
           </div>
           <button
             onClick={onClose}
@@ -156,13 +236,15 @@ export default function SaveLoadModal({
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {t === 'save' ? 'Save Project' : `Load Project${layouts.length > 0 ? ` (${layouts.length})` : ''}`}
+              {t === 'save' ? 'Save / Export' : `Load / Import${layouts.length > 0 ? ` (${layouts.length})` : ''}`}
             </button>
           ))}
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
+
+          {/* ── SAVE / EXPORT TAB ── */}
           {tab === 'save' && (
             <div className="p-5 space-y-4">
               {/* Current state summary */}
@@ -242,13 +324,110 @@ export default function SaveLoadModal({
                   Add furniture or wall features to at least one room before saving.
                 </p>
               )}
+
+              {/* Divider */}
+              <div className="relative flex items-center gap-3 py-1">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Export to file</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+
+              {/* Export to file section */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                      <path d="M7.5 1v9M4.5 7l3 3 3-3" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M2 11v1.5A1.5 1.5 0 003.5 14h8a1.5 1.5 0 001.5-1.5V11" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-blue-900">Share with others</p>
+                    <p className="text-[10px] text-blue-700 mt-0.5 leading-relaxed">
+                      Export your current project as a <span className="font-mono font-semibold">.rlt</span> file. Anyone can import it into their own copy of the tool to view and edit your design.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => exportCurrentToFile(saveName, rooms, activeRoomId)}
+                  disabled={totalItems === 0}
+                  className="w-full border border-blue-300 bg-white text-blue-700 py-2 rounded-lg text-[11px] font-semibold hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <path d="M6.5 1v8M3.5 6l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M1 10v1.5A1.5 1.5 0 002.5 13h8a1.5 1.5 0 001.5-1.5V10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                  </svg>
+                  Export as .rlt file
+                </button>
+              </div>
             </div>
           )}
 
+          {/* ── LOAD / IMPORT TAB ── */}
           {tab === 'load' && (
-            <div className="p-4">
+            <div className="p-4 space-y-3">
+
+              {/* Import from file section */}
+              <div className="bg-green-50 border border-green-100 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                      <path d="M7.5 10V1M4.5 4l3-3 3 3" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M2 11v1.5A1.5 1.5 0 003.5 14h8a1.5 1.5 0 001.5-1.5V11" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-green-900">Import a shared project</p>
+                    <p className="text-[10px] text-green-700 mt-0.5 leading-relaxed">
+                      Open a <span className="font-mono font-semibold">.rlt</span> file shared by someone else. It will be added to your saved projects list below.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Hidden file input */}
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".rlt,.json"
+                  className="hidden"
+                  onChange={handleImportFile}
+                />
+
+                <button
+                  onClick={() => importInputRef.current?.click()}
+                  className="w-full border border-green-300 bg-white text-green-700 py-2 rounded-lg text-[11px] font-semibold hover:bg-green-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <path d="M6.5 9V1M3.5 4l3-3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M1 10v1.5A1.5 1.5 0 002.5 13h8a1.5 1.5 0 001.5-1.5V10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                  </svg>
+                  Choose .rlt file to import
+                </button>
+
+                {/* Import feedback */}
+                {importError && (
+                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="flex-shrink-0 mt-0.5">
+                      <circle cx="6" cy="6" r="5" stroke="#ef4444" strokeWidth="1.2"/>
+                      <path d="M6 3.5v3M6 8.5v.5" stroke="#ef4444" strokeWidth="1.2" strokeLinecap="round"/>
+                    </svg>
+                    <p className="text-[10px] text-red-700">{importError}</p>
+                  </div>
+                )}
+                {importSuccess && (
+                  <div className="flex items-start gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="flex-shrink-0 mt-0.5">
+                      <circle cx="6" cy="6" r="5" stroke="#16a34a" strokeWidth="1.2"/>
+                      <path d="M3.5 6l2 2 3-3" stroke="#16a34a" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <p className="text-[10px] text-green-700">{importSuccess}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Saved projects list */}
               {layouts.length === 0 ? (
-                <div className="py-12 text-center">
+                <div className="py-8 text-center">
                   <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
                     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                       <rect x="2" y="2" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.5" opacity="0.4"/>
@@ -256,15 +435,13 @@ export default function SaveLoadModal({
                     </svg>
                   </div>
                   <p className="text-sm font-medium text-muted-foreground">No saved projects yet</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">Switch to the Save tab to save your first project.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Switch to the Save tab to save your first project, or import a shared .rlt file above.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {layouts.map(layout => {
-                    // Show thumbnail from active room, or first room with a thumbnail
-                    const thumbRoom = (layout.rooms ?? []).find(r => r.id === layout.activeRoomId && r.thumbnail)
-                      ?? (layout.rooms ?? []).find(r => r.thumbnail);
-                    const thumb = thumbRoom?.thumbnail ?? layout.thumbnail;
+                    const thumb = (layout.rooms ?? []).find(r => r.id === layout.activeRoomId && r.thumbnail)?.thumbnail
+                      ?? (layout.rooms ?? []).find(r => r.thumbnail)?.thumbnail;
                     const roomCount = (layout.rooms ?? []).length;
 
                     return (
@@ -331,7 +508,6 @@ export default function SaveLoadModal({
                                 <span className="text-[10px] text-muted-foreground">·</span>
                                 <span className="text-[10px] text-muted-foreground">{formatSavedAt(layout.savedAt)}</span>
                               </div>
-                              {/* Room name pills */}
                               {roomCount > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-1">
                                   {(layout.rooms ?? []).slice(0, 4).map(r => (
@@ -350,6 +526,18 @@ export default function SaveLoadModal({
 
                             {/* Actions */}
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {/* Export this saved project */}
+                              <button
+                                onClick={() => exportLayoutToFile(layout)}
+                                title="Export to .rlt file"
+                                className="w-7 h-7 flex items-center justify-center rounded hover:bg-blue-50 text-muted-foreground hover:text-blue-600 transition-colors"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                  <path d="M6 1v7M3.5 5.5l2.5 2.5 2.5-2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M1 9.5v1A1.5 1.5 0 002.5 12h7a1.5 1.5 0 001.5-1.5v-1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                </svg>
+                              </button>
+
                               {/* Duplicate */}
                               <button
                                 onClick={() => handleDuplicate(layout.id)}
@@ -420,7 +608,7 @@ export default function SaveLoadModal({
         {/* Footer */}
         <div className="px-5 py-3 border-t border-border bg-muted/30 flex-shrink-0">
           <p className="text-[10px] text-muted-foreground">
-            Projects are saved in your browser's local storage and remain available across sessions on this device.
+            Projects are saved in your browser's local storage. Use <strong>Export</strong> to share a <span className="font-mono">.rlt</span> file, and <strong>Import</strong> to open a file shared by someone else.
           </p>
         </div>
       </div>
