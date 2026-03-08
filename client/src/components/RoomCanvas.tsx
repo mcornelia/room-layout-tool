@@ -465,31 +465,36 @@ export default function RoomCanvas({
                 onMouseLeave={() => setHoveredId(null)}
               >
                 {/* Furniture label */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none overflow-hidden p-1">
-                  {item.width * effectiveScale > 30 && item.depth * effectiveScale > 20 && (
-                    <span className="text-center leading-tight" style={{ fontSize: Math.min(11, item.width * effectiveScale / 8) }}>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none overflow-hidden p-1.5 gap-0.5">
+                  {item.width * effectiveScale > 28 && item.depth * effectiveScale > 18 && (
+                    <span className="text-center leading-none" style={{ fontSize: Math.min(16, Math.max(10, item.width * effectiveScale / 6)) }}>
                       {item.icon}
                     </span>
                   )}
-                  {item.width * effectiveScale > 40 && item.depth * effectiveScale > 28 && (
+                  {item.width * effectiveScale > 36 && item.depth * effectiveScale > 24 && (
                     <span
-                      className="font-mono text-center leading-tight font-medium"
+                      className="font-mono text-center leading-tight font-semibold"
                       style={{
-                        fontSize: Math.min(9, item.width * effectiveScale / 10),
+                        fontSize: Math.min(13, Math.max(9, item.width * effectiveScale / 8)),
                         color: item.borderColor,
                         maxWidth: '100%',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
+                        textShadow: '0 0 4px rgba(255,255,255,0.9)',
                       }}
                     >
                       {item.name}
                     </span>
                   )}
-                  {item.width * effectiveScale > 50 && item.depth * effectiveScale > 36 && (
+                  {item.width * effectiveScale > 48 && item.depth * effectiveScale > 32 && (
                     <span
-                      className="font-mono text-center"
-                      style={{ fontSize: Math.min(8, item.width * effectiveScale / 12), color: item.borderColor + 'aa' }}
+                      className="font-mono text-center leading-none"
+                      style={{
+                        fontSize: Math.min(11, Math.max(8, item.width * effectiveScale / 10)),
+                        color: item.borderColor + 'cc',
+                        textShadow: '0 0 3px rgba(255,255,255,0.8)',
+                      }}
                     >
                       {formatInches(item.width)} × {formatInches(item.depth)}
                     </span>

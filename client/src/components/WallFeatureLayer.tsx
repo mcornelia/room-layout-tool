@@ -247,23 +247,40 @@ export default function WallFeatureLayer({
         />
       );
 
-      // Label
-      if (isSelected || lengthPx > 30) {
+      // Label — always visible with white background pill
+      {
+        const labelText = `${feature.label}  ${formatInches(length)}`;
         const labelY = wall === 'top'
-          ? wallY - 8
-          : wallY + wt + WINDOW_DEPTH + 14;
+          ? wallY - 18
+          : wallY + wt + WINDOW_DEPTH + 18;
+        const fontSize = 11;
+        const approxTextWidth = labelText.length * 6.2;
+        const pillW = approxTextWidth + 10;
+        const pillH = 16;
+        const pillX = x1 + lengthPx / 2 - pillW / 2;
+        const pillY = labelY - pillH + 3;
         elements.push(
-          <text key="label"
-            x={x1 + lengthPx / 2} y={labelY}
-            textAnchor="middle"
-            fontSize={9}
-            fontFamily="IBM Plex Mono, monospace"
-            fill={strokeColor}
-            fontWeight={isSelected ? '600' : '400'}
-            style={{ pointerEvents: 'none', userSelect: 'none' }}
-          >
-            {feature.label} · {formatInches(length)}
-          </text>
+          <g key="label" style={{ pointerEvents: 'none', userSelect: 'none' }}>
+            <rect
+              x={pillX} y={pillY}
+              width={pillW} height={pillH}
+              rx={3}
+              fill="white"
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 1.5 : 1}
+              opacity={0.92}
+            />
+            <text
+              x={x1 + lengthPx / 2} y={labelY}
+              textAnchor="middle"
+              fontSize={fontSize}
+              fontFamily="IBM Plex Mono, monospace"
+              fill={strokeColor}
+              fontWeight={isSelected ? '700' : '600'}
+            >
+              {labelText}
+            </text>
+          </g>
         );
       }
 
@@ -387,24 +404,43 @@ export default function WallFeatureLayer({
         />
       );
 
-      // Label
-      if (isSelected || lengthPx > 30) {
+      // Label — always visible with white background pill, rotated for vertical walls
+      {
+        const labelText = `${feature.label}  ${formatInches(length)}`;
         const labelX = wall === 'left'
-          ? wallX - 10
-          : wallX + wt + WINDOW_DEPTH + 10;
+          ? wallX - 18
+          : wallX + wt + WINDOW_DEPTH + 18;
+        const cx = labelX;
+        const cy = y1 + lengthPx / 2;
+        const fontSize = 11;
+        const approxTextWidth = labelText.length * 6.2;
+        const pillW = approxTextWidth + 10;
+        const pillH = 16;
         elements.push(
-          <text key="label"
-            x={labelX} y={y1 + lengthPx / 2}
-            textAnchor={wall === 'left' ? 'end' : 'start'}
-            fontSize={9}
-            fontFamily="IBM Plex Mono, monospace"
-            fill={strokeColor}
-            fontWeight={isSelected ? '600' : '400'}
+          <g key="label"
+            transform={`rotate(-90, ${cx}, ${cy})`}
             style={{ pointerEvents: 'none', userSelect: 'none' }}
-            transform={`rotate(-90, ${labelX}, ${y1 + lengthPx / 2})`}
           >
-            {feature.label} · {formatInches(length)}
-          </text>
+            <rect
+              x={cx - pillW / 2} y={cy - pillH + 3}
+              width={pillW} height={pillH}
+              rx={3}
+              fill="white"
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 1.5 : 1}
+              opacity={0.92}
+            />
+            <text
+              x={cx} y={cy}
+              textAnchor="middle"
+              fontSize={fontSize}
+              fontFamily="IBM Plex Mono, monospace"
+              fill={strokeColor}
+              fontWeight={isSelected ? '700' : '600'}
+            >
+              {labelText}
+            </text>
+          </g>
         );
       }
     }
