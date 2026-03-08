@@ -8,6 +8,8 @@ import { PlacedFurniture, FurnitureTemplate } from '@/lib/furniture';
 import { useUnit } from '@/contexts/UnitContext';
 import { WallFeature } from '@/lib/wallFeatures';
 import WallFeatureLayer from './WallFeatureLayer';
+import AnnotationLayer from './AnnotationLayer';
+import { Annotation, makeAnnotation } from '@/lib/annotations';
 
 interface RoomCanvasProps {
   roomWidth: number;   // inches
@@ -28,6 +30,12 @@ interface RoomCanvasProps {
   onSelectFeature: (id: string | null) => void;
   // Tape measure
   measureMode: boolean;
+  // Annotations
+  annotations: Annotation[];
+  selectedAnnotationId: string | null;
+  annotateMode: boolean;
+  onAnnotationsChange: (anns: Annotation[]) => void;
+  onSelectAnnotation: (id: string | null) => void;
 }
 
 const ZOOM_LEVELS = [1.5, 2, 2.5, 3, 4, 5];
@@ -76,6 +84,11 @@ export default function RoomCanvas({
   onFeaturesLive,
   onSelectFeature,
   measureMode,
+  annotations,
+  selectedAnnotationId,
+  annotateMode,
+  onAnnotationsChange,
+  onSelectAnnotation,
 }: RoomCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const { fmt, unitMode } = useUnit();
@@ -421,12 +434,19 @@ export default function RoomCanvas({
               linear-gradient(to bottom, rgba(148,163,184,0.25) 1px, transparent 1px)
             `,
             backgroundSize: `${gridSize * effectiveScale}px ${gridSize * effectiveScale}px`,
-            cursor: measureMode ? 'crosshair' : interaction ? 'grabbing' : 'default',
+            cursor: annotateMode ? 'crosshair' : measureMode ? 'crosshair' : interaction ? 'grabbing' : 'default',
           }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={measureMode ? handleMeasureClick : undefined}
+          onClick={annotateMode ? (e: React.MouseEvent<HTMLDivElement>) => {
+            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+            const xInches = (e.clientX - rect.left) / effectiveScale;
+            const yInches = (e.clientY - rect.top) / effectiveScale;
+            const newAnn = makeAnnotation({ x: xInches, y: yInches });
+            onAnnotationsChange([...annotations, newAnn]);
+            onSelectAnnotation(newAnn.id);
+          } : measureMode ? handleMeasureClick : undefined}
           onMouseMove={handleMeasureMouseMove}
         >
           {/* Room dimension labels */}
@@ -667,6 +687,20 @@ export default function RoomCanvas({
               Click anywhere to start a new measurement
             </div>
           )}
+
+          {/* Annotation layer */}
+          <AnnotationLayer
+            annotations={annotations}
+            selectedId={selectedAnnotationId}
+            annotateMode={annotateMode}
+            scale={effectiveScale}
+            offsetX={RULER_SIZE}
+            offsetY={RULER_SIZE}
+            onAdd={(ann) => onAnnotationsChange([...annotations, ann])}
+            onChange={onAnnotationsChange}
+            onSelect={onSelectAnnotation}
+            onCanvasClick={() => {}}
+          />
 
           {/* Wall features layer */}
           <WallFeatureLayer

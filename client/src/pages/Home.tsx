@@ -10,6 +10,7 @@ import { exportPrintReady } from '@/lib/printExport';
 import { exportAllRooms } from '@/lib/exportAllRooms';
 import { useUnit } from '@/contexts/UnitContext';
 import { WallFeature } from '@/lib/wallFeatures';
+import { Annotation } from '@/lib/annotations';
 import {
   Room,
   SavedLayout,
@@ -89,6 +90,8 @@ export default function Home() {
   const [gridSize, setGridSize] = useState(12);
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [measureMode, setMeasureMode] = useState(false);
+  const [annotateMode, setAnnotateMode] = useState(false);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [showSaveLoad, setShowSaveLoad] = useState(false);
   const [currentLayoutId, setCurrentLayoutId] = useState<string | null>(null);
   const [currentLayoutName, setCurrentLayoutName] = useState('');
@@ -115,9 +118,16 @@ export default function Home() {
     setSelectedId(null);
     setSelectedFeatureId(null);
     setMeasureMode(false);
+    setAnnotateMode(false);
+    setSelectedAnnotationId(null);
   }, [project.activeRoomId]);
 
   const selectedItem = furniture.find(f => f.instanceId === selectedId) ?? null;
+  const annotations: Annotation[] = activeRoom?.annotations ?? [];
+
+  const handleAnnotationsChange = useCallback((anns: Annotation[]) => {
+    patchActiveRoom({ annotations: anns });
+  }, [patchActiveRoom]);
 
   // ─── Room tab management ──────────────────────────────────────────────────
 
@@ -519,6 +529,12 @@ export default function Home() {
         roomCount={project.rooms.length}
         measureMode={measureMode}
         onToggleMeasure={handleToggleMeasure}
+        annotateMode={annotateMode}
+        onToggleAnnotate={() => {
+          setAnnotateMode(p => !p);
+          setMeasureMode(false);
+          setSelectedAnnotationId(null);
+        }}
       />
 
       {/* ── Main layout ── */}
@@ -550,6 +566,11 @@ export default function Home() {
           onFeaturesLive={handleWallFeaturesLive}
           onSelectFeature={handleSelectFeature}
           measureMode={measureMode}
+          annotations={annotations}
+          selectedAnnotationId={selectedAnnotationId}
+          annotateMode={annotateMode}
+          onAnnotationsChange={handleAnnotationsChange}
+          onSelectAnnotation={setSelectedAnnotationId}
         />
 
         <PropertiesPanel

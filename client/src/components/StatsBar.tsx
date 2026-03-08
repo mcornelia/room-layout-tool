@@ -21,6 +21,8 @@ interface StatsBarProps {
   roomCount?: number;
   measureMode: boolean;
   onToggleMeasure: () => void;
+  annotateMode: boolean;
+  onToggleAnnotate: () => void;
 }
 
 export default function StatsBar({
@@ -37,6 +39,8 @@ export default function StatsBar({
   roomCount = 1,
   measureMode,
   onToggleMeasure,
+  annotateMode,
+  onToggleAnnotate,
 }: StatsBarProps) {
   const { unitMode, setUnitMode, fmt } = useUnit();
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -150,6 +154,25 @@ export default function StatsBar({
             <option value={24}>24"</option>
           </select>
         </div>
+
+        {/* Annotate toggle */}
+        <button
+          onClick={onToggleAnnotate}
+          title="Annotate (click on canvas to place a text label)"
+          className={`flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md border transition-colors ${
+            annotateMode
+              ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+              : 'bg-background text-muted-foreground border-border hover:border-amber-500 hover:text-amber-600'
+          }`}
+        >
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <rect x="1" y="7" width="9" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+            <path d="M3 5.5L7.5 1 11 4.5 6.5 9" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill="none"/>
+            <line x1="3" y1="9" x2="6" y2="9" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+            <line x1="3" y1="10.5" x2="7.5" y2="10.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+          </svg>
+          Annotate
+        </button>
 
         {/* Tape measure toggle */}
         <button

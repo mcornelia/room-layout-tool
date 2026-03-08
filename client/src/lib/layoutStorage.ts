@@ -4,6 +4,7 @@
 
 import { PlacedFurniture } from './furniture';
 import { WallFeature } from './wallFeatures';
+import { Annotation } from './annotations';
 
 const STORAGE_KEY = 'room-layout-tool:projects';
 const AUTOSAVE_KEY = 'room-layout-tool:autosave';
@@ -18,6 +19,7 @@ export interface Room {
   roomDepth: number;      // inches
   furniture: PlacedFurniture[];
   wallFeatures: WallFeature[];
+  annotations: Annotation[];
   thumbnail?: string;     // base64 PNG data URL
 }
 
@@ -59,6 +61,7 @@ export function makeDefaultRoom(overrides?: Partial<Room>): Room {
     roomDepth: 196.5,
     furniture: [],
     wallFeatures: [],
+    annotations: [],
     ...overrides,
   };
 }
@@ -73,6 +76,7 @@ function migrateLegacy(layout: SavedLayout): SavedLayout {
     roomDepth: layout.roomDepth ?? 196.5,
     furniture: layout.furniture ?? [],
     wallFeatures: layout.wallFeatures ?? [],
+    annotations: [],
     thumbnail: layout.thumbnail,
   };
   return {
@@ -207,6 +211,7 @@ export function loadAutoSave(): AutoSaveData | null {
         roomDepth: parsed.roomDepth ?? 196.5,
         furniture: parsed.furniture ?? [],
         wallFeatures: parsed.wallFeatures ?? [],
+        annotations: [],
       };
       return { rooms: [room], activeRoomId: room.id };
     }
