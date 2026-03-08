@@ -7,6 +7,7 @@ import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import { PlacedFurniture, FurnitureTemplate } from '@/lib/furniture';
 import { exportPrintReady } from '@/lib/printExport';
+import { exportAllRooms } from '@/lib/exportAllRooms';
 import { useUnit } from '@/contexts/UnitContext';
 import { WallFeature } from '@/lib/wallFeatures';
 import {
@@ -315,6 +316,21 @@ export default function Home() {
     }
   }, [currentLayoutName, roomName, roomWidth, roomDepth, furniture, wallFeatures, unitMode]);
 
+  const handleExportAll = useCallback(async () => {
+    toast.loading(`Generating PDF for ${project.rooms.length} room${project.rooms.length !== 1 ? 's' : ''}…`, { id: 'export-all' });
+    try {
+      await exportAllRooms({
+        rooms: project.rooms,
+        projectName: currentLayoutName || 'Room Layout Project',
+        unitMode: unitMode === 'in' ? 'in' : 'ft',
+      });
+      toast.success('All-rooms PDF exported!', { id: 'export-all', duration: 2500 });
+    } catch (err) {
+      console.error(err);
+      toast.error('PDF export failed', { id: 'export-all', duration: 3000 });
+    }
+  }, [project.rooms, currentLayoutName, unitMode]);
+
   // ─── Selection helpers ────────────────────────────────────────────────────
 
   const handleSelectFurniture = useCallback((id: string | null) => {
@@ -492,6 +508,8 @@ export default function Home() {
         onGridSizeChange={setGridSize}
         onClearAll={handleClearAll}
         onExport={handleExport}
+        onExportAll={handleExportAll}
+        roomCount={project.rooms.length}
         measureMode={measureMode}
         onToggleMeasure={handleToggleMeasure}
       />

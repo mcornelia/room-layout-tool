@@ -3,6 +3,7 @@
 // Shows room statistics: total area, used area, free area, item count
 // Includes unit toggle: ft+in ↔ inches only
 
+import { useState, useRef, useEffect } from 'react';
 import { PlacedFurniture, squareFeetFromInches } from '@/lib/furniture';
 import { useUnit } from '@/contexts/UnitContext';
 
@@ -16,6 +17,8 @@ interface StatsBarProps {
   onGridSizeChange: (size: number) => void;
   onClearAll: () => void;
   onExport: () => void;
+  onExportAll?: () => void;
+  roomCount?: number;
   measureMode: boolean;
   onToggleMeasure: () => void;
 }
@@ -30,10 +33,25 @@ export default function StatsBar({
   onGridSizeChange,
   onClearAll,
   onExport,
+  onExportAll,
+  roomCount = 1,
   measureMode,
   onToggleMeasure,
 }: StatsBarProps) {
   const { unitMode, setUnitMode, fmt } = useUnit();
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [exportMenuOpen]);
 
   const totalSqFt = squareFeetFromInches(roomWidth, roomDepth);
   const usedSqFt = furniture.reduce((sum, f) => sum + squareFeetFromInches(f.width, f.depth), 0);
@@ -163,13 +181,74 @@ export default function StatsBar({
           Clear All
         </button>
 
-        {/* Export */}
-        <button
-          onClick={onExport}
-          className="text-[11px] bg-primary text-primary-foreground px-3 py-1 rounded-md font-medium hover:opacity-90 transition-opacity"
-        >
-          Export PNG
-        </button>
+        {/* Export split button */}
+        <div ref={exportRef} className="relative flex items-center">
+          <button
+            onClick={onExport}
+            className={`text-[11px] bg-primary text-primary-foreground py-1 font-medium hover:opacity-90 transition-opacity ${
+              onExportAll ? 'pl-3 pr-2 rounded-l-md border-r border-primary-foreground/20' : 'px-3 rounded-md'
+            }`}
+          >
+            Export PNG
+          </button>
+
+          {onExportAll && (
+            <button
+              onClick={() => setExportMenuOpen(p => !p)}
+              title="More export options"
+              className="text-[11px] bg-primary text-primary-foreground px-1.5 py-1 rounded-r-md font-medium hover:opacity-90 transition-opacity"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
+
+          {exportMenuOpen && (
+            <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+              {/* Export current room PNG */}
+              <button
+                onClick={() => { onExport(); setExportMenuOpen(false); }}
+                className="w-full text-left px-3 py-3 hover:bg-muted transition-colors flex items-start gap-2.5"
+              >
+                <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <rect x="1" y="1" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" className="text-primary"/>
+                    <path d="M3 9h7M6.5 4v4M4.5 6.5l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"/>
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold text-foreground">Current Room (PNG)</div>
+                  <div className="text-[9px] text-muted-foreground mt-0.5">High-res PNG of this floor plan</div>
+                </div>
+              </button>
+
+              <div className="border-t border-border mx-2" />
+
+              {/* Export all rooms PDF */}
+              <button
+                onClick={() => { onExportAll?.(); setExportMenuOpen(false); }}
+                className="w-full text-left px-3 py-3 hover:bg-primary/5 transition-colors flex items-start gap-2.5"
+              >
+                <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <rect x="1" y="1" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" className="text-primary"/>
+                    <rect x="2.5" y="2.5" width="3.5" height="3.5" rx="0.5" fill="currentColor" opacity="0.5" className="text-primary"/>
+                    <rect x="7" y="2.5" width="3.5" height="3.5" rx="0.5" fill="currentColor" opacity="0.5" className="text-primary"/>
+                    <rect x="2.5" y="7" width="3.5" height="3.5" rx="0.5" fill="currentColor" opacity="0.5" className="text-primary"/>
+                    <rect x="7" y="7" width="3.5" height="3.5" rx="0.5" fill="currentColor" opacity="0.3" className="text-primary"/>
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold text-foreground">All Rooms (PDF)</div>
+                  <div className="text-[9px] text-muted-foreground mt-0.5">
+                    {roomCount} room{roomCount !== 1 ? 's' : ''} · cover sheet + floor plans
+                  </div>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
