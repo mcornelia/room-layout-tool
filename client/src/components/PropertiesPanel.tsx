@@ -1,8 +1,9 @@
 // Room Layout Tool — PropertiesPanel Component
 // Philosophy: Professional Floor Plan Tool
-// Shows selected furniture properties and allows precise editing
+// Shows selected furniture properties and allows precise editing + color customization
 
-import { PlacedFurniture, squareFeetFromInches } from '@/lib/furniture';
+import { useRef } from 'react';
+import { PlacedFurniture, squareFeetFromInches, FURNITURE_TEMPLATES } from '@/lib/furniture';
 import { useUnit } from '@/contexts/UnitContext';
 import { Trash2, RotateCw, Copy } from 'lucide-react';
 
@@ -15,6 +16,29 @@ interface PropertiesPanelProps {
   onDuplicate: (id: string) => void;
   onRotate: (id: string) => void;
 }
+
+// Curated palette of fill colors (hex) for quick selection
+const FILL_SWATCHES = [
+  // Blues / teals
+  '#DBEAFE', '#BAE6FD', '#A5F3FC', '#99F6E4',
+  // Greens
+  '#DCFCE7', '#D9F99D', '#FEF9C3', '#FEF3C7',
+  // Pinks / purples
+  '#FCE7F3', '#EDE9FE', '#F3E8FF', '#FFE4E6',
+  // Neutrals
+  '#F1F5F9', '#E2E8F0', '#CBD5E1', '#94A3B8',
+  // Warm
+  '#FED7AA', '#FDE68A', '#D1FAE5', '#CFFAFE',
+  // Bold
+  '#93C5FD', '#6EE7B7', '#FCA5A5', '#C4B5FD',
+];
+
+const BORDER_SWATCHES = [
+  '#1E3A5F', '#1E40AF', '#065F46', '#713F12',
+  '#7C3AED', '#9D174D', '#374151', '#1F2937',
+  '#0369A1', '#047857', '#B45309', '#6D28D9',
+  '#DC2626', '#D97706', '#059669', '#2563EB',
+];
 
 function NumericField({
   label,
@@ -55,6 +79,78 @@ function NumericField({
   );
 }
 
+/** Compact color swatch grid with a "custom" native input at the end */
+function SwatchPicker({
+  label,
+  value,
+  swatches,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  swatches: string[];
+  onChange: (color: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{label}</label>
+        {/* Current color chip + click-to-open native picker */}
+        <button
+          onClick={() => inputRef.current?.click()}
+          title="Pick custom color"
+          className="flex items-center gap-1 group"
+        >
+          <div
+            className="w-5 h-5 rounded border border-border shadow-sm group-hover:ring-2 group-hover:ring-primary/40 transition-all"
+            style={{ backgroundColor: value }}
+          />
+          <span className="font-mono text-[9px] text-muted-foreground group-hover:text-foreground transition-colors">
+            {value.toUpperCase()}
+          </span>
+        </button>
+        <input
+          ref={inputRef}
+          type="color"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="sr-only"
+          aria-label={`Custom ${label}`}
+        />
+      </div>
+
+      {/* Swatch grid */}
+      <div className="grid grid-cols-8 gap-0.5">
+        {swatches.map(hex => (
+          <button
+            key={hex}
+            onClick={() => onChange(hex)}
+            title={hex}
+            className={`w-5 h-5 rounded border transition-all hover:scale-110 hover:shadow-md ${
+              value.toLowerCase() === hex.toLowerCase()
+                ? 'ring-2 ring-primary ring-offset-1 border-primary'
+                : 'border-border/60'
+            }`}
+            style={{ backgroundColor: hex }}
+          />
+        ))}
+        {/* Custom color button */}
+        <button
+          onClick={() => inputRef.current?.click()}
+          title="Custom color…"
+          className="w-5 h-5 rounded border border-dashed border-border flex items-center justify-center hover:border-primary hover:bg-primary/5 transition-colors"
+        >
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+            <path d="M4 1v6M1 4h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-muted-foreground"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function PropertiesPanel({
   item,
   roomWidth,
@@ -82,6 +178,16 @@ export default function PropertiesPanel({
   const { fmt } = useUnit();
   const sqFt = squareFeetFromInches(item.width, item.depth);
 
+  // Find the original template to allow color reset
+  const template = FURNITURE_TEMPLATES.find(t => t.id === item.templateId);
+  const isColorCustomized =
+    item.color !== template?.color || item.borderColor !== template?.borderColor;
+
+  const handleResetColor = () => {
+    if (!template) return;
+    onUpdate({ ...item, color: template.color, borderColor: template.borderColor });
+  };
+
   return (
     <div className="w-52 bg-white border-l border-border flex flex-col overflow-hidden">
       {/* Header */}
@@ -102,7 +208,7 @@ export default function PropertiesPanel({
 
       {/* Properties */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {/* Name */}
+        {/* Label */}
         <div className="flex flex-col gap-0.5">
           <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Label</label>
           <input
@@ -159,7 +265,37 @@ export default function PropertiesPanel({
           </div>
         </div>
 
-        {/* Converted dimensions */}
+        {/* ── Color customization ── */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Color</p>
+            {isColorCustomized && template && (
+              <button
+                onClick={handleResetColor}
+                title="Reset to default color"
+                className="text-[9px] text-primary hover:underline font-medium"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="space-y-2.5">
+            <SwatchPicker
+              label="Fill"
+              value={item.color}
+              swatches={FILL_SWATCHES}
+              onChange={color => onUpdate({ ...item, color })}
+            />
+            <SwatchPicker
+              label="Border"
+              value={item.borderColor}
+              swatches={BORDER_SWATCHES}
+              onChange={borderColor => onUpdate({ ...item, borderColor })}
+            />
+          </div>
+        </div>
+
+        {/* Summary */}
         <div className="bg-muted/40 rounded-md p-2">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Summary</p>
           <div className="space-y-0.5">
