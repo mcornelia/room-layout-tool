@@ -7,6 +7,7 @@ import { WallFeature, WALL_FEATURE_COLORS } from './wallFeatures';
 
 interface ExportOptions {
   layoutName: string;
+  roomName?: string;   // user-defined room title (e.g. "Master Bedroom")
   roomWidth: number;   // inches
   roomDepth: number;   // inches
   furniture: PlacedFurniture[];
@@ -38,7 +39,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 export async function exportPrintReady(opts: ExportOptions): Promise<void> {
-  const { layoutName, roomWidth, roomDepth, furniture, wallFeatures, unitMode } = opts;
+  const { layoutName, roomName, roomWidth, roomDepth, furniture, wallFeatures, unitMode } = opts;
 
   // ── Layout constants (all in px at 2× for crisp output) ──────────────────
   const S = 2; // scale factor
@@ -96,17 +97,27 @@ export async function exportPrintReady(opts: ExportOptions): Promise<void> {
   roundRect(ctx, MARGIN, curY, PAGE_W - MARGIN * 2, TITLE_H, 8 * S);
   ctx.fill();
 
+  // Title block: room name (large) + layout name (smaller subtitle) + dimensions + date
+  const displayRoomName = roomName?.trim() || 'Room Layout';
+  const displayLayoutName = layoutName?.trim();
+
   ctx.fillStyle = '#FFFFFF';
   ctx.font = `bold ${26 * S}px "Space Grotesk", sans-serif`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(layoutName || 'Room Layout', MARGIN + 22 * S, curY + TITLE_H * 0.36);
+  ctx.fillText(displayRoomName, MARGIN + 22 * S, curY + TITLE_H * (displayLayoutName ? 0.28 : 0.36));
+
+  if (displayLayoutName) {
+    ctx.font = `${13 * S}px "Space Grotesk", sans-serif`;
+    ctx.fillStyle = '#CBD5E1';
+    ctx.fillText(displayLayoutName, MARGIN + 22 * S, curY + TITLE_H * 0.58);
+  }
 
   ctx.font = `${13 * S}px "IBM Plex Mono", monospace`;
   ctx.fillStyle = '#93C5D8';
   ctx.fillText(
     `${fmt(roomWidth, unitMode)} wide × ${fmt(roomDepth, unitMode)} deep  ·  ${(roomWidth * roomDepth / 144).toFixed(1)} sq ft`,
-    MARGIN + 22 * S, curY + TITLE_H * 0.70,
+    MARGIN + 22 * S, curY + TITLE_H * (displayLayoutName ? 0.82 : 0.70),
   );
 
   ctx.textAlign = 'right';

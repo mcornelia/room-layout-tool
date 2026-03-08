@@ -53,10 +53,15 @@ export default function Home() {
   const [currentLayoutId, setCurrentLayoutId] = useState<string | null>(null);
   const [currentLayoutName, setCurrentLayoutName] = useState('');
 
+  // Room name (editable, flows into export title block)
+  const [roomName, setRoomName] = useState('Bedroom');
+  const [editingRoomName, setEditingRoomName] = useState(false);
+  const [roomNameDraft, setRoomNameDraft] = useState('Bedroom');
+
   // Auto-save on every change
   useEffect(() => {
-    autoSave(furniture, wallFeatures);
-  }, [furniture, wallFeatures]);
+    autoSave(furniture, wallFeatures, roomName);
+  }, [furniture, wallFeatures, roomName]);
 
   // Restore auto-save on first load
   useEffect(() => {
@@ -64,6 +69,10 @@ export default function Home() {
     if (saved && (saved.furniture.length > 0 || saved.wallFeatures.length > 0)) {
       // Use replaceLayout so the auto-restore doesn't pollute the undo stack
       replaceLayout({ furniture: saved.furniture, wallFeatures: saved.wallFeatures });
+      if (saved.roomName) {
+        setRoomName(saved.roomName);
+        setRoomNameDraft(saved.roomName);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -157,6 +166,27 @@ export default function Home() {
     toast.success('Cleared all items', { duration: 1500 });
   }, [furniture, wallFeatures, setLayout]);
 
+  // Room name editing helpers
+  const handleRoomNameEdit = useCallback(() => {
+    setRoomNameDraft(roomName);
+    setEditingRoomName(true);
+  }, [roomName]);
+
+  const handleRoomNameCommit = useCallback(() => {
+    const trimmed = roomNameDraft.trim() || 'Bedroom';
+    setRoomName(trimmed);
+    setRoomNameDraft(trimmed);
+    setEditingRoomName(false);
+  }, [roomNameDraft]);
+
+  const handleRoomNameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') handleRoomNameCommit();
+    if (e.key === 'Escape') {
+      setRoomNameDraft(roomName);
+      setEditingRoomName(false);
+    }
+  }, [roomName, handleRoomNameCommit]);
+
   // ─── Wall feature mutations ───────────────────────────────────────────────────
 
   const handleWallFeaturesChange = useCallback((updated: WallFeature[]) => {
@@ -173,6 +203,10 @@ export default function Home() {
   const handleSaveLayout = useCallback((layout: SavedLayout) => {
     setCurrentLayoutId(layout.id);
     setCurrentLayoutName(layout.name);
+    if (layout.roomName) {
+      setRoomName(layout.roomName);
+      setRoomNameDraft(layout.roomName);
+    }
     toast.success(`Layout "${layout.name}" saved`, { duration: 2000 });
   }, []);
 
@@ -182,6 +216,10 @@ export default function Home() {
     setSelectedFeatureId(null);
     setCurrentLayoutId(layout.id);
     setCurrentLayoutName(layout.name);
+    if (layout.roomName) {
+      setRoomName(layout.roomName);
+      setRoomNameDraft(layout.roomName);
+    }
     toast.success(`Loaded "${layout.name}"`, { duration: 2000 });
   }, [setLayout]);
 
@@ -199,6 +237,7 @@ export default function Home() {
     try {
       await exportPrintReady({
         layoutName: currentLayoutName || 'Bedroom Layout',
+        roomName,
         roomWidth: ROOM_WIDTH,
         roomDepth: ROOM_DEPTH,
         furniture,
@@ -210,7 +249,7 @@ export default function Home() {
       console.error(err);
       toast.error('Export failed — try a screenshot instead', { id: 'export', duration: 3000 });
     }
-  }, [currentLayoutName, furniture, wallFeatures, unitMode]);
+  }, [currentLayoutName, roomName, furniture, wallFeatures, unitMode]);
 
   // ─── Selection helpers ────────────────────────────────────────────────────────
 
@@ -279,7 +318,7 @@ export default function Home() {
       tabIndex={0}
       style={{ outline: 'none' }}
     >
-      {/* Top header */}
+        {/* Top header */}
       <header className="h-10 bg-white border-b border-border flex items-center px-4 gap-3 flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded bg-primary flex items-center justify-center">
@@ -292,7 +331,30 @@ export default function Home() {
           <span className="text-sm font-semibold text-foreground">Room Layout Tool</span>
         </div>
         <div className="w-px h-5 bg-border" />
-        <span className="text-xs text-muted-foreground">Bedroom · {formatInches(ROOM_WIDTH)} wide × {formatInches(ROOM_DEPTH)} deep · {(ROOM_WIDTH * ROOM_DEPTH / 144).toFixed(1)} sq ft</span>
+        {/* Editable room name */}
+        {editingRoomName ? (
+          <input
+            type="text"
+            value={roomNameDraft}
+            onChange={e => setRoomNameDraft(e.target.value)}
+            onBlur={handleRoomNameCommit}
+            onKeyDown={handleRoomNameKeyDown}
+            autoFocus
+            className="text-sm font-semibold text-foreground border-b-2 border-primary bg-transparent focus:outline-none w-40 px-0.5"
+          />
+        ) : (
+          <button
+            onClick={handleRoomNameEdit}
+            title="Click to rename room"
+            className="group flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors"
+          >
+            <span>{roomName}</span>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="opacity-0 group-hover:opacity-60 transition-opacity">
+              <path d="M7 1l2 2-6 6H1V7l6-6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
+        <span className="text-xs text-muted-foreground">{formatInches(ROOM_WIDTH)} wide × {formatInches(ROOM_DEPTH)} deep · {(ROOM_WIDTH * ROOM_DEPTH / 144).toFixed(1)} sq ft</span>
         {currentLayoutName && (
           <span className="text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full flex items-center gap-1">
             <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1 7V8h7V7M4.5 1v5M2.5 4l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -405,17 +467,19 @@ export default function Home() {
         />
       </div>
 
-      {/* Save/Load Modal */}
-      <SaveLoadModal
-        isOpen={showSaveLoad}
-        onClose={() => setShowSaveLoad(false)}
-        furniture={furniture}
-        wallFeatures={wallFeatures}
-        currentLayoutId={currentLayoutId}
-        currentLayoutName={currentLayoutName}
-        onSave={handleSaveLayout}
-        onLoad={handleLoadLayout}
-      />
+        {showSaveLoad && (
+          <SaveLoadModal
+            isOpen={showSaveLoad}
+            onClose={() => setShowSaveLoad(false)}
+            furniture={furniture}
+            wallFeatures={wallFeatures}
+            currentLayoutId={currentLayoutId}
+            currentLayoutName={currentLayoutName}
+            roomName={roomName}
+            onSave={handleSaveLayout}
+            onLoad={handleLoadLayout}
+          />
+        )}
     </div>
   );
 }
