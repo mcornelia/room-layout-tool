@@ -6,6 +6,8 @@ import { useState, useCallback, useEffect } from 'react';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import { PlacedFurniture, FurnitureTemplate, formatInches } from '@/lib/furniture';
+import { exportPrintReady } from '@/lib/printExport';
+import { useUnit } from '@/contexts/UnitContext';
 import { WallFeature } from '@/lib/wallFeatures';
 import { SavedLayout, autoSave, loadAutoSave } from '@/lib/layoutStorage';
 import { useHistory } from '@/hooks/useHistory';
@@ -190,33 +192,25 @@ export default function Home() {
   }, []);
 
   // ─── Export ──────────────────────────────────────────────────────────────────
+  const { unitMode } = useUnit();
 
   const handleExport = useCallback(async () => {
-    const canvasEl = document.getElementById('room-canvas-export-target');
-    if (!canvasEl) {
-      toast.error('Canvas not found');
-      return;
-    }
-    toast.loading('Generating PNG…', { id: 'export' });
+    toast.loading('Generating print-ready PNG…', { id: 'export' });
     try {
-      const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(canvasEl as HTMLElement, {
-        backgroundColor: '#F4F5F7',
-        scale: 2,
-        useCORS: true,
-        logging: false,
+      await exportPrintReady({
+        layoutName: currentLayoutName || 'Bedroom Layout',
+        roomWidth: ROOM_WIDTH,
+        roomDepth: ROOM_DEPTH,
+        furniture,
+        wallFeatures,
+        unitMode: unitMode === 'in' ? 'in' : 'ft',
       });
-      const url = canvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `room-layout-${currentLayoutName || 'bedroom'}.png`;
-      a.click();
-      toast.success('PNG exported!', { id: 'export', duration: 2000 });
+      toast.success('Floor plan exported!', { id: 'export', duration: 2500 });
     } catch (err) {
       console.error(err);
       toast.error('Export failed — try a screenshot instead', { id: 'export', duration: 3000 });
     }
-  }, [currentLayoutName]);
+  }, [currentLayoutName, furniture, wallFeatures, unitMode]);
 
   // ─── Selection helpers ────────────────────────────────────────────────────────
 
