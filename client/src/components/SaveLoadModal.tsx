@@ -1,9 +1,10 @@
 // Room Layout Tool — SaveLoadModal Component
 // Philosophy: Professional Floor Plan Tool
-// Handles: saving named layouts, listing saved layouts, loading, renaming, and deleting
+// Handles: saving named multi-room projects, listing, loading, renaming, duplicating, and deleting
 
 import { useState, useEffect, useCallback } from 'react';
 import {
+  Room,
   SavedLayout,
   listLayouts,
   saveLayout,
@@ -13,21 +14,16 @@ import {
   duplicateLayout,
   formatSavedAt,
 } from '@/lib/layoutStorage';
-import { PlacedFurniture } from '@/lib/furniture';
-import { WallFeature } from '@/lib/wallFeatures';
 import { generateThumbnail } from '@/lib/generateThumbnail';
 
 interface SaveLoadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // Current state (for saving)
-  furniture: PlacedFurniture[];
-  wallFeatures: WallFeature[];
+  // Current project state (for saving)
+  rooms: Room[];
+  activeRoomId: string;
   currentLayoutId: string | null;
   currentLayoutName: string;
-  roomName?: string;
-  roomWidth?: number;
-  roomDepth?: number;
   // Callbacks
   onSave: (layout: SavedLayout) => void;
   onLoad: (layout: SavedLayout) => void;
@@ -38,13 +34,10 @@ type Tab = 'save' | 'load';
 export default function SaveLoadModal({
   isOpen,
   onClose,
-  furniture,
-  wallFeatures,
+  rooms,
+  activeRoomId,
   currentLayoutId,
   currentLayoutName,
-  roomName,
-  roomWidth,
-  roomDepth,
   onSave,
   onLoad,
 }: SaveLoadModalProps) {
@@ -57,7 +50,6 @@ export default function SaveLoadModal({
   const [justSavedId, setJustSavedId] = useState<string | null>(null);
   const [justDuplicatedId, setJustDuplicatedId] = useState<string | null>(null);
 
-  // Refresh layouts list whenever modal opens or tab changes
   useEffect(() => {
     if (isOpen) {
       setLayouts(listLayouts());
@@ -70,17 +62,25 @@ export default function SaveLoadModal({
   }, []);
 
   const handleSave = useCallback(() => {
-    const name = saveName.trim() || 'Untitled Layout';
-    // Generate thumbnail before saving
-    const thumbnail = (roomWidth && roomDepth)
-      ? generateThumbnail({ roomWidth, roomDepth, furniture, wallFeatures })
-      : undefined;
-    const layout = saveLayout(name, furniture, wallFeatures, currentLayoutId ?? undefined, roomName, roomWidth, roomDepth, thumbnail);
+    const name = saveName.trim() || 'Untitled Project';
+
+    // Generate thumbnails for each room
+    const roomsWithThumbs: Room[] = rooms.map(room => ({
+      ...room,
+      thumbnail: generateThumbnail({
+        roomWidth: room.roomWidth,
+        roomDepth: room.roomDepth,
+        furniture: room.furniture,
+        wallFeatures: room.wallFeatures,
+      }),
+    }));
+
+    const layout = saveLayout(name, roomsWithThumbs, activeRoomId, currentLayoutId ?? undefined);
     setJustSavedId(layout.id);
     refreshLayouts();
     onSave(layout);
     setTimeout(() => setJustSavedId(null), 2000);
-  }, [saveName, furniture, wallFeatures, currentLayoutId, roomName, roomWidth, roomDepth, onSave, refreshLayouts]);
+  }, [saveName, rooms, activeRoomId, currentLayoutId, onSave, refreshLayouts]);
 
   const handleLoad = useCallback((layout: SavedLayout) => {
     onLoad(layout);
@@ -111,7 +111,12 @@ export default function SaveLoadModal({
 
   if (!isOpen) return null;
 
-  const itemCount = furniture.length + wallFeatures.length;
+  const totalItems = rooms.reduce(
+    (sum, r) => sum + r.furniture.length + r.wallFeatures.length, 0
+  );
+
+  // Primary thumbnail = active room's thumbnail (or first room)
+  const primaryRoom = rooms.find(r => r.id === activeRoomId) ?? rooms[0];
 
   return (
     <div
@@ -122,12 +127,12 @@ export default function SaveLoadModal({
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-xl shadow-2xl w-[600px] max-h-[80vh] flex flex-col overflow-hidden border border-border">
+      <div className="relative bg-white rounded-xl shadow-2xl w-[620px] max-h-[82vh] flex flex-col overflow-hidden border border-border">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <div>
-            <h2 className="text-sm font-bold text-foreground tracking-tight">Layouts</h2>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Save and restore your room arrangements</p>
+            <h2 className="text-sm font-bold text-foreground tracking-tight">Projects</h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Save and restore your multi-room projects</p>
           </div>
           <button
             onClick={onClose}
@@ -151,7 +156,7 @@ export default function SaveLoadModal({
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {t === 'save' ? 'Save Layout' : `Load Layout${layouts.length > 0 ? ` (${layouts.length})` : ''}`}
+              {t === 'save' ? 'Save Project' : `Load Project${layouts.length > 0 ? ` (${layouts.length})` : ''}`}
             </button>
           ))}
         </div>
@@ -161,41 +166,49 @@ export default function SaveLoadModal({
           {tab === 'save' && (
             <div className="p-5 space-y-4">
               {/* Current state summary */}
-              <div className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-                    <rect x="3.5" y="5" width="4" height="6" rx="0.5" fill="currentColor" opacity="0.5"/>
-                    <rect x="9" y="7" width="3.5" height="4" rx="0.5" fill="currentColor" opacity="0.5"/>
+              <div className="bg-muted/50 rounded-lg p-3 flex items-start gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <rect x="1" y="1" width="16" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.5"/>
+                    <rect x="3" y="5" width="5" height="7" rx="0.5" fill="currentColor" opacity="0.4"/>
+                    <rect x="10" y="7" width="5" height="5" rx="0.5" fill="currentColor" opacity="0.4"/>
                   </svg>
                 </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-foreground">Current Layout</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {furniture.length} furniture item{furniture.length !== 1 ? 's' : ''} · {wallFeatures.length} wall feature{wallFeatures.length !== 1 ? 's' : ''}
-                    {itemCount === 0 && ' · Canvas is empty'}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold text-foreground">Current Project</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {rooms.length} room{rooms.length !== 1 ? 's' : ''} · {totalItems} item{totalItems !== 1 ? 's' : ''} total
                   </p>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {rooms.map(r => (
+                      <span key={r.id} className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                        r.id === activeRoomId
+                          ? 'bg-primary/15 text-primary'
+                          : 'bg-muted text-muted-foreground'
+                      }`}>
+                        {r.name} ({r.furniture.length + r.wallFeatures.length})
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 {currentLayoutId && (
-                  <div className="ml-auto">
-                    <span className="text-[9px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                      Editing saved layout
-                    </span>
-                  </div>
+                  <span className="text-[9px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full flex-shrink-0">
+                    Editing saved project
+                  </span>
                 )}
               </div>
 
               {/* Name input */}
               <div>
                 <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                  Layout Name
+                  Project Name
                 </label>
                 <input
                   type="text"
                   value={saveName}
                   onChange={e => setSaveName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
-                  placeholder="e.g. King Bed Against Wall, Option A..."
+                  placeholder="e.g. Master Suite Layout, Option A…"
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
                   autoFocus
                 />
@@ -204,7 +217,7 @@ export default function SaveLoadModal({
               {/* Save button */}
               <button
                 onClick={handleSave}
-                disabled={itemCount === 0}
+                disabled={totalItems === 0}
                 className="w-full bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {justSavedId ? (
@@ -219,14 +232,14 @@ export default function SaveLoadModal({
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                       <path d="M2 10V12h10V10M7 2v7M4 6l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
-                    {currentLayoutId ? 'Update Saved Layout' : 'Save Layout'}
+                    {currentLayoutId ? 'Update Project' : 'Save Project'}
                   </>
                 )}
               </button>
 
-              {itemCount === 0 && (
+              {totalItems === 0 && (
                 <p className="text-[10px] text-muted-foreground text-center">
-                  Add furniture or wall features to the canvas before saving.
+                  Add furniture or wall features to at least one room before saving.
                 </p>
               )}
             </div>
@@ -242,139 +255,162 @@ export default function SaveLoadModal({
                       <path d="M7 11h8M11 7v8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.4"/>
                     </svg>
                   </div>
-                  <p className="text-sm font-medium text-muted-foreground">No saved layouts yet</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">Switch to the Save tab to save your first layout.</p>
+                  <p className="text-sm font-medium text-muted-foreground">No saved projects yet</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Switch to the Save tab to save your first project.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {layouts.map(layout => (
-                    <div
-                      key={layout.id}
-                      className={`group border rounded-lg p-3 transition-all ${
+                  {layouts.map(layout => {
+                    // Show thumbnail from active room, or first room with a thumbnail
+                    const thumbRoom = (layout.rooms ?? []).find(r => r.id === layout.activeRoomId && r.thumbnail)
+                      ?? (layout.rooms ?? []).find(r => r.thumbnail);
+                    const thumb = thumbRoom?.thumbnail ?? layout.thumbnail;
+                    const roomCount = (layout.rooms ?? []).length;
+
+                    return (
+                      <div
+                        key={layout.id}
+                        className={`group border rounded-lg p-3 transition-all ${
                           justDuplicatedId === layout.id
                             ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
                             : 'border-border hover:border-primary/40 hover:bg-primary/[0.02]'
                         }`}
-                    >
-                      {renamingId === layout.id ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={renameValue}
-                            onChange={e => setRenameValue(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') handleRenameSubmit(layout.id);
-                              if (e.key === 'Escape') { setRenamingId(null); setRenameValue(''); }
-                            }}
-                            className="flex-1 border border-primary rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => handleRenameSubmit(layout.id)}
-                            className="text-[11px] bg-primary text-primary-foreground px-2.5 py-1 rounded font-medium"
-                          >Save</button>
-                          <button
-                            onClick={() => { setRenamingId(null); setRenameValue(''); }}
-                            className="text-[11px] text-muted-foreground hover:text-foreground px-2 py-1"
-                          >Cancel</button>
-                        </div>
-                      ) : (
-                        <div className="flex items-start gap-3">
-                          {/* Thumbnail or fallback icon */}
-                          {layout.thumbnail ? (
-                            <div className="w-16 h-16 rounded-lg overflow-hidden border border-border flex-shrink-0 bg-slate-50">
-                              <img
-                                src={layout.thumbnail}
-                                alt={layout.name}
-                                className="w-full h-full object-contain"
-                                draggable={false}
-                              />
-                            </div>
-                          ) : (
-                            <div className="w-16 h-16 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                <rect x="2" y="2" width="20" height="20" rx="3" stroke="currentColor" strokeWidth="1.5" opacity="0.5"/>
-                                <rect x="5" y="7" width="6" height="8" rx="1" fill="currentColor" opacity="0.35"/>
-                                <rect x="13" y="9" width="6" height="5" rx="1" fill="currentColor" opacity="0.35"/>
-                                <rect x="5" y="17" width="14" height="2" rx="0.5" fill="currentColor" opacity="0.2"/>
-                              </svg>
-                            </div>
-                          )}
-
-                          {/* Info */}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground truncate">{layout.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] text-muted-foreground">
-                                {layout.furniture.length} items · {layout.wallFeatures.length} wall features
-                              </span>
-                              <span className="text-[10px] text-muted-foreground">·</span>
-                              <span className="text-[10px] text-muted-foreground">{formatSavedAt(layout.savedAt)}</span>
-                            </div>
+                      >
+                        {renamingId === layout.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={renameValue}
+                              onChange={e => setRenameValue(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleRenameSubmit(layout.id);
+                                if (e.key === 'Escape') { setRenamingId(null); setRenameValue(''); }
+                              }}
+                              className="flex-1 border border-primary rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleRenameSubmit(layout.id)}
+                              className="text-[11px] bg-primary text-primary-foreground px-2.5 py-1 rounded font-medium"
+                            >Save</button>
+                            <button
+                              onClick={() => { setRenamingId(null); setRenameValue(''); }}
+                              className="text-[11px] text-muted-foreground hover:text-foreground px-2 py-1"
+                            >Cancel</button>
                           </div>
-
-                          {/* Actions */}
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {/* Duplicate */}
-                            <button
-                              onClick={() => handleDuplicate(layout.id)}
-                              title="Duplicate layout"
-                              className="w-7 h-7 flex items-center justify-center rounded hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                                <rect x="1" y="3" width="7" height="8" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-                                <path d="M4 3V2a1 1 0 011-1h5a1 1 0 011 1v7a1 1 0 01-1 1H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                              </svg>
-                            </button>
-
-                            {/* Rename */}
-                            <button
-                              onClick={() => { setRenamingId(layout.id); setRenameValue(layout.name); }}
-                              title="Rename"
-                              className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                                <path d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-
-                            {/* Delete */}
-                            {confirmDeleteId === layout.id ? (
-                              <div className="flex items-center gap-1">
-                                <span className="text-[10px] text-destructive font-medium">Delete?</span>
-                                <button
-                                  onClick={() => handleDelete(layout.id)}
-                                  className="text-[10px] bg-destructive text-white px-2 py-0.5 rounded font-medium"
-                                >Yes</button>
-                                <button
-                                  onClick={() => setConfirmDeleteId(null)}
-                                  className="text-[10px] text-muted-foreground hover:text-foreground px-1"
-                                >No</button>
+                        ) : (
+                          <div className="flex items-start gap-3">
+                            {/* Thumbnail or fallback */}
+                            {thumb ? (
+                              <div className="w-16 h-16 rounded-lg overflow-hidden border border-border flex-shrink-0 bg-slate-50">
+                                <img
+                                  src={thumb}
+                                  alt={layout.name}
+                                  className="w-full h-full object-contain"
+                                  draggable={false}
+                                />
                               </div>
                             ) : (
+                              <div className="w-16 h-16 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                  <rect x="2" y="2" width="20" height="20" rx="3" stroke="currentColor" strokeWidth="1.5" opacity="0.5"/>
+                                  <rect x="5" y="7" width="6" height="8" rx="1" fill="currentColor" opacity="0.35"/>
+                                  <rect x="13" y="9" width="6" height="5" rx="1" fill="currentColor" opacity="0.35"/>
+                                  <rect x="5" y="17" width="14" height="2" rx="0.5" fill="currentColor" opacity="0.2"/>
+                                </svg>
+                              </div>
+                            )}
+
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-foreground truncate">{layout.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                <span className="text-[10px] text-muted-foreground">
+                                  {roomCount} room{roomCount !== 1 ? 's' : ''}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">·</span>
+                                <span className="text-[10px] text-muted-foreground">{formatSavedAt(layout.savedAt)}</span>
+                              </div>
+                              {/* Room name pills */}
+                              {roomCount > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {(layout.rooms ?? []).slice(0, 4).map(r => (
+                                    <span key={r.id} className="text-[9px] px-1.5 py-0.5 bg-muted rounded-full text-muted-foreground">
+                                      {r.name}
+                                    </span>
+                                  ))}
+                                  {roomCount > 4 && (
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-muted rounded-full text-muted-foreground">
+                                      +{roomCount - 4} more
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {/* Duplicate */}
                               <button
-                                onClick={() => setConfirmDeleteId(layout.id)}
-                                title="Delete"
-                                className="w-7 h-7 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                                onClick={() => handleDuplicate(layout.id)}
+                                title="Duplicate project"
+                                className="w-7 h-7 flex items-center justify-center rounded hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
                               >
                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                                  <path d="M2 3h8M5 3V2h2v1M4 3v6h4V3H4z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <rect x="1" y="3" width="7" height="8" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+                                  <path d="M4 3V2a1 1 0 011-1h5a1 1 0 011 1v7a1 1 0 01-1 1H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
                                 </svg>
                               </button>
-                            )}
-                          </div>
 
-                          {/* Load button */}
-                          <button
-                            onClick={() => handleLoad(layout)}
-                            className="ml-1 text-[11px] bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:opacity-90 transition-opacity flex-shrink-0"
-                          >
-                            Load
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                              {/* Rename */}
+                              <button
+                                onClick={() => { setRenamingId(layout.id); setRenameValue(layout.name); }}
+                                title="Rename"
+                                className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                  <path d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+
+                              {/* Delete */}
+                              {confirmDeleteId === layout.id ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[10px] text-destructive font-medium">Delete?</span>
+                                  <button
+                                    onClick={() => handleDelete(layout.id)}
+                                    className="text-[10px] bg-destructive text-white px-2 py-0.5 rounded font-medium"
+                                  >Yes</button>
+                                  <button
+                                    onClick={() => setConfirmDeleteId(null)}
+                                    className="text-[10px] text-muted-foreground hover:text-foreground px-1"
+                                  >No</button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmDeleteId(layout.id)}
+                                  title="Delete"
+                                  className="w-7 h-7 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                    <path d="M2 3h8M5 3V2h2v1M4 3v6h4V3H4z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Load button */}
+                            <button
+                              onClick={() => handleLoad(layout)}
+                              className="ml-1 text-[11px] bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-semibold hover:opacity-90 transition-opacity flex-shrink-0"
+                            >
+                              Load
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -384,7 +420,7 @@ export default function SaveLoadModal({
         {/* Footer */}
         <div className="px-5 py-3 border-t border-border bg-muted/30 flex-shrink-0">
           <p className="text-[10px] text-muted-foreground">
-            Layouts are saved in your browser's local storage and remain available across sessions on this device.
+            Projects are saved in your browser's local storage and remain available across sessions on this device.
           </p>
         </div>
       </div>

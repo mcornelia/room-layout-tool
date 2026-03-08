@@ -1,15 +1,22 @@
 // Room Layout Tool — Home Page
 // Philosophy: Professional Floor Plan Tool
-// Layout: Top stats bar, left sidebar (furniture + walls), center canvas, right properties panel
+// Layout: Top header → Room tabs → Stats bar → [Left sidebar | Canvas | Right panel]
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import { PlacedFurniture, FurnitureTemplate } from '@/lib/furniture';
 import { exportPrintReady } from '@/lib/printExport';
 import { useUnit } from '@/contexts/UnitContext';
 import { WallFeature } from '@/lib/wallFeatures';
-import { SavedLayout, autoSave, loadAutoSave } from '@/lib/layoutStorage';
+import {
+  Room,
+  SavedLayout,
+  autoSave,
+  loadAutoSave,
+  makeDefaultRoom,
+  makeRoomId,
+} from '@/lib/layoutStorage';
 import { useHistory } from '@/hooks/useHistory';
 import RoomCanvas from '@/components/RoomCanvas';
 import FurnitureSidebar from '@/components/FurnitureSidebar';
@@ -17,74 +24,159 @@ import PropertiesPanel from '@/components/PropertiesPanel';
 import StatsBar from '@/components/StatsBar';
 import SaveLoadModal from '@/components/SaveLoadModal';
 import RoomDimensionsEditor from '@/components/RoomDimensionsEditor';
+import RoomTabs from '@/components/RoomTabs';
 
-// Default room dimensions in inches (226" wide × 196.5" deep = 18' 10" × 16' 4.5")
-const DEFAULT_ROOM_WIDTH = 226;
-const DEFAULT_ROOM_DEPTH = 196.5;
+// The shape tracked by history — rooms array + activeRoomId
+interface ProjectSnapshot {
+  rooms: Room[];
+  activeRoomId: string;
+}
 
-// The shape tracked by history — furniture + wall features together
-interface LayoutSnapshot {
-  furniture: PlacedFurniture[];
-  wallFeatures: WallFeature[];
+function makeInitialProject(): ProjectSnapshot {
+  const room = makeDefaultRoom({ name: 'Bedroom' });
+  return { rooms: [room], activeRoomId: room.id };
 }
 
 export default function Home() {
   const {
-    state: layout,
-    set: setLayout,
-    replace: replaceLayout,
+    state: project,
+    set: setProject,
+    replace: replaceProject,
     undo,
     redo,
     canUndo,
     canRedo,
-  } = useHistory<LayoutSnapshot>({ furniture: [], wallFeatures: [] });
+  } = useHistory<ProjectSnapshot>(makeInitialProject());
 
-  const furniture = layout.furniture;
-  const wallFeatures = layout.wallFeatures;
+  // Alias for clarity
+  const replaceProjectLive = replaceProject;
+
+  // ─── Active room helpers ──────────────────────────────────────────────────
+
+  const activeRoom = project.rooms.find(r => r.id === project.activeRoomId)
+    ?? project.rooms[0];
+
+  const furniture = activeRoom?.furniture ?? [];
+  const wallFeatures = activeRoom?.wallFeatures ?? [];
+  const roomWidth = activeRoom?.roomWidth ?? 226;
+  const roomDepth = activeRoom?.roomDepth ?? 196.5;
+  const roomName = activeRoom?.name ?? 'Room';
+
+  /** Update only the active room, preserving all other rooms */
+  const patchActiveRoom = useCallback((patch: Partial<Room>) => {
+    setProject(prev => ({
+      ...prev,
+      rooms: prev.rooms.map(r =>
+        r.id === prev.activeRoomId ? { ...r, ...patch } : r
+      ),
+    }));
+  }, [setProject]);
+
+  const patchActiveRoomLive = useCallback((patch: Partial<Room>) => {
+    replaceProject(prev => ({
+      ...prev,
+      rooms: prev.rooms.map(r =>
+        r.id === prev.activeRoomId ? { ...r, ...patch } : r
+      ),
+    }));
+  }, [replaceProject]);
+
+  // ─── UI state ─────────────────────────────────────────────────────────────
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [snapToGrid, setSnapToGrid] = useState(true);
-  const [gridSize, setGridSize] = useState(12); // inches
-
+  const [gridSize, setGridSize] = useState(12);
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [measureMode, setMeasureMode] = useState(false);
-
-  // Room dimensions (user-editable)
-  const [roomWidth, setRoomWidth] = useState(DEFAULT_ROOM_WIDTH);
-  const [roomDepth, setRoomDepth] = useState(DEFAULT_ROOM_DEPTH);
-
-  // Save/load state
   const [showSaveLoad, setShowSaveLoad] = useState(false);
   const [currentLayoutId, setCurrentLayoutId] = useState<string | null>(null);
   const [currentLayoutName, setCurrentLayoutName] = useState('');
-
-  // Room name (editable, flows into export title block)
-  const [roomName, setRoomName] = useState('Bedroom');
   const [editingRoomName, setEditingRoomName] = useState(false);
-  const [roomNameDraft, setRoomNameDraft] = useState('Bedroom');
+  const [roomNameDraft, setRoomNameDraft] = useState('');
 
-  // Auto-save on every change
+  // ─── Auto-save ────────────────────────────────────────────────────────────
+
   useEffect(() => {
-    autoSave(furniture, wallFeatures, roomName, roomWidth, roomDepth);
-  }, [furniture, wallFeatures, roomName, roomWidth, roomDepth]);
+    autoSave({ rooms: project.rooms, activeRoomId: project.activeRoomId });
+  }, [project]);
 
   // Restore auto-save on first load
   useEffect(() => {
     const saved = loadAutoSave();
-    if (saved) {
-      if (saved.furniture.length > 0 || saved.wallFeatures.length > 0) {
-        replaceLayout({ furniture: saved.furniture, wallFeatures: saved.wallFeatures });
-      }
-      if (saved.roomName) { setRoomName(saved.roomName); setRoomNameDraft(saved.roomName); }
-      if (saved.roomWidth && saved.roomWidth >= 24) setRoomWidth(saved.roomWidth);
-      if (saved.roomDepth && saved.roomDepth >= 24) setRoomDepth(saved.roomDepth);
+    if (saved && saved.rooms.length > 0) {
+      replaceProject({ rooms: saved.rooms, activeRoomId: saved.activeRoomId });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Clear selection when switching rooms
+  useEffect(() => {
+    setSelectedId(null);
+    setSelectedFeatureId(null);
+    setMeasureMode(false);
+  }, [project.activeRoomId]);
+
   const selectedItem = furniture.find(f => f.instanceId === selectedId) ?? null;
 
-  // ─── Furniture mutations (all go through setLayout to record history) ─────────
+  // ─── Room tab management ──────────────────────────────────────────────────
+
+  const handleSwitchRoom = useCallback((roomId: string) => {
+    setProject(prev => ({ ...prev, activeRoomId: roomId }));
+  }, [setProject]);
+
+  const handleAddRoom = useCallback(() => {
+    const idx = project.rooms.length + 1;
+    const newRoom = makeDefaultRoom({ name: `Room ${idx}` });
+    setProject(prev => ({
+      rooms: [...prev.rooms, newRoom],
+      activeRoomId: newRoom.id,
+    }));
+    toast.success(`Added "${newRoom.name}"`, { duration: 1500 });
+  }, [project.rooms.length, setProject]);
+
+  const handleRenameRoom = useCallback((roomId: string, newName: string) => {
+    setProject(prev => ({
+      ...prev,
+      rooms: prev.rooms.map(r => r.id === roomId ? { ...r, name: newName } : r),
+    }));
+  }, [setProject]);
+
+  const handleDeleteRoom = useCallback((roomId: string) => {
+    if (project.rooms.length <= 1) return;
+    const remaining = project.rooms.filter(r => r.id !== roomId);
+    const newActive = project.activeRoomId === roomId
+      ? remaining[remaining.length - 1].id
+      : project.activeRoomId;
+    setProject({ rooms: remaining, activeRoomId: newActive });
+    toast.success('Room deleted', { duration: 1500 });
+  }, [project, setProject]);
+
+  // ─── Room name inline editing (header) ───────────────────────────────────
+
+  const handleRoomNameEdit = useCallback(() => {
+    setRoomNameDraft(roomName);
+    setEditingRoomName(true);
+  }, [roomName]);
+
+  const handleRoomNameCommit = useCallback(() => {
+    const trimmed = roomNameDraft.trim() || 'Room';
+    handleRenameRoom(project.activeRoomId, trimmed);
+    setEditingRoomName(false);
+  }, [roomNameDraft, project.activeRoomId, handleRenameRoom]);
+
+  const handleRoomNameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') handleRoomNameCommit();
+    if (e.key === 'Escape') setEditingRoomName(false);
+  }, [handleRoomNameCommit]);
+
+  // ─── Room dimensions ──────────────────────────────────────────────────────
+
+  const handleDimensionsChange = useCallback((w: number, d: number) => {
+    patchActiveRoom({ roomWidth: w, roomDepth: d });
+    toast.success(`Room resized to ${Math.round(w)}" × ${Math.round(d)}"`, { duration: 2000 });
+  }, [patchActiveRoom]);
+
+  // ─── Furniture mutations ──────────────────────────────────────────────────
 
   const addFurniture = useCallback((template: FurnitureTemplate, x?: number, y?: number) => {
     const newItem: PlacedFurniture = {
@@ -101,39 +193,36 @@ export default function Home() {
       borderColor: template.borderColor,
       icon: template.icon,
     };
-    setLayout(prev => ({ ...prev, furniture: [...prev.furniture, newItem] }));
+    patchActiveRoom({ furniture: [...furniture, newItem] });
     setSelectedId(newItem.instanceId);
     setSelectedFeatureId(null);
     toast.success(`Added ${template.name}`, { duration: 1500 });
-  }, [roomWidth, roomDepth, setLayout]);
+  }, [roomWidth, roomDepth, furniture, patchActiveRoom]);
 
   const handleDrop = useCallback((template: FurnitureTemplate, x: number, y: number) => {
     addFurniture(template, x, y);
   }, [addFurniture]);
 
-  // Called by canvas during drag (live updates, no history entry per tick)
   const handleFurnitureChange = useCallback((updated: PlacedFurniture[]) => {
-    replaceLayout(prev => ({ ...prev, furniture: updated }));
-  }, [replaceLayout]);
+    patchActiveRoomLive({ furniture: updated });
+  }, [patchActiveRoomLive]);
 
-  // Called by canvas at drag-end to commit a history entry
   const handleFurnitureCommit = useCallback((updated: PlacedFurniture[]) => {
-    setLayout(prev => ({ ...prev, furniture: updated }));
-  }, [setLayout]);
+    patchActiveRoom({ furniture: updated });
+  }, [patchActiveRoom]);
 
   const handleUpdate = useCallback((updated: PlacedFurniture) => {
-    setLayout(prev => ({
-      ...prev,
-      furniture: prev.furniture.map(f => f.instanceId === updated.instanceId ? updated : f),
-    }));
-  }, [setLayout]);
+    patchActiveRoom({
+      furniture: furniture.map(f => f.instanceId === updated.instanceId ? updated : f),
+    });
+  }, [furniture, patchActiveRoom]);
 
   const handleDelete = useCallback((id: string) => {
     const item = furniture.find(f => f.instanceId === id);
-    setLayout(prev => ({ ...prev, furniture: prev.furniture.filter(f => f.instanceId !== id) }));
+    patchActiveRoom({ furniture: furniture.filter(f => f.instanceId !== id) });
     setSelectedId(null);
     if (item) toast.success(`Removed ${item.name}`, { duration: 1500 });
-  }, [furniture, setLayout]);
+  }, [furniture, patchActiveRoom]);
 
   const handleDuplicate = useCallback((id: string) => {
     const item = furniture.find(f => f.instanceId === id);
@@ -144,100 +233,67 @@ export default function Home() {
       x: Math.min(item.x + 12, roomWidth - item.width),
       y: Math.min(item.y + 12, roomDepth - item.depth),
     };
-    setLayout(prev => ({ ...prev, furniture: [...prev.furniture, newItem] }));
+    patchActiveRoom({ furniture: [...furniture, newItem] });
     setSelectedId(newItem.instanceId);
     toast.success(`Duplicated ${item.name}`, { duration: 1500 });
-  }, [furniture, roomWidth, roomDepth, setLayout]);
+  }, [furniture, roomWidth, roomDepth, patchActiveRoom]);
 
   const handleRotate = useCallback((id: string) => {
-    setLayout(prev => ({
-      ...prev,
-      furniture: prev.furniture.map(f => {
+    patchActiveRoom({
+      furniture: furniture.map(f => {
         if (f.instanceId !== id) return f;
         const newW = Math.min(f.depth, roomWidth - f.x);
         const newD = Math.min(f.width, roomDepth - f.y);
         return { ...f, width: newW, depth: newD, rotation: ((f.rotation ?? 0) + 90) % 360 };
       }),
-    }));
-  }, [roomWidth, roomDepth, setLayout]);
+    });
+  }, [furniture, roomWidth, roomDepth, patchActiveRoom]);
 
   const handleClearAll = useCallback(() => {
     if (furniture.length === 0 && wallFeatures.length === 0) return;
-    setLayout({ furniture: [], wallFeatures: [] });
+    patchActiveRoom({ furniture: [], wallFeatures: [] });
     setSelectedId(null);
     setSelectedFeatureId(null);
-    setCurrentLayoutId(null);
-    setCurrentLayoutName('');
     toast.success('Cleared all items', { duration: 1500 });
-  }, [furniture, wallFeatures, setLayout]);
+  }, [furniture, wallFeatures, patchActiveRoom]);
 
-  // Room name editing helpers
-  const handleRoomNameEdit = useCallback(() => {
-    setRoomNameDraft(roomName);
-    setEditingRoomName(true);
-  }, [roomName]);
-
-  const handleRoomNameCommit = useCallback(() => {
-    const trimmed = roomNameDraft.trim() || 'Room';
-    setRoomName(trimmed);
-    setRoomNameDraft(trimmed);
-    setEditingRoomName(false);
-  }, [roomNameDraft]);
-
-  const handleRoomNameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') handleRoomNameCommit();
-    if (e.key === 'Escape') {
-      setRoomNameDraft(roomName);
-      setEditingRoomName(false);
-    }
-  }, [roomName, handleRoomNameCommit]);
-
-  // Room dimensions change
-  const handleDimensionsChange = useCallback((w: number, d: number) => {
-    setRoomWidth(w);
-    setRoomDepth(d);
-    toast.success(`Room resized to ${Math.round(w)}" × ${Math.round(d)}"`, { duration: 2000 });
-  }, []);
-
-  // ─── Wall feature mutations ───────────────────────────────────────────────────
+  // ─── Wall feature mutations ───────────────────────────────────────────────
 
   const handleWallFeaturesChange = useCallback((updated: WallFeature[]) => {
-    setLayout(prev => ({ ...prev, wallFeatures: updated }));
-  }, [setLayout]);
+    patchActiveRoom({ wallFeatures: updated });
+  }, [patchActiveRoom]);
 
-  // Live drag updates (no history entry per tick)
   const handleWallFeaturesLive = useCallback((updated: WallFeature[]) => {
-    replaceLayout(prev => ({ ...prev, wallFeatures: updated }));
-  }, [replaceLayout]);
+    patchActiveRoomLive({ wallFeatures: updated });
+  }, [patchActiveRoomLive]);
 
-  // ─── Save / Load ──────────────────────────────────────────────────────────────
+  // ─── Save / Load ──────────────────────────────────────────────────────────
 
   const handleSaveLayout = useCallback((layout: SavedLayout) => {
     setCurrentLayoutId(layout.id);
     setCurrentLayoutName(layout.name);
-    if (layout.roomName) { setRoomName(layout.roomName); setRoomNameDraft(layout.roomName); }
-    toast.success(`Layout "${layout.name}" saved`, { duration: 2000 });
+    toast.success(`Project "${layout.name}" saved`, { duration: 2000 });
   }, []);
 
   const handleLoadLayout = useCallback((layout: SavedLayout) => {
-    setLayout({ furniture: layout.furniture, wallFeatures: layout.wallFeatures });
+    if (layout.rooms && layout.rooms.length > 0) {
+      replaceProject({ rooms: layout.rooms, activeRoomId: layout.activeRoomId ?? layout.rooms[0].id });
+    }
     setSelectedId(null);
     setSelectedFeatureId(null);
     setCurrentLayoutId(layout.id);
     setCurrentLayoutName(layout.name);
-    if (layout.roomName) { setRoomName(layout.roomName); setRoomNameDraft(layout.roomName); }
-    if (layout.roomWidth && layout.roomWidth >= 24) setRoomWidth(layout.roomWidth);
-    if (layout.roomDepth && layout.roomDepth >= 24) setRoomDepth(layout.roomDepth);
     toast.success(`Loaded "${layout.name}"`, { duration: 2000 });
-  }, [setLayout]);
+  }, [replaceProject]);
 
-  // ─── Measure ─────────────────────────────────────────────────────────────────
+  // ─── Measure ─────────────────────────────────────────────────────────────
 
   const handleToggleMeasure = useCallback(() => {
     setMeasureMode(prev => !prev);
   }, []);
 
-  // ─── Export ──────────────────────────────────────────────────────────────────
+  // ─── Export (active room only) ────────────────────────────────────────────
+
   const { unitMode } = useUnit();
 
   const handleExport = useCallback(async () => {
@@ -259,7 +315,7 @@ export default function Home() {
     }
   }, [currentLayoutName, roomName, roomWidth, roomDepth, furniture, wallFeatures, unitMode]);
 
-  // ─── Selection helpers ────────────────────────────────────────────────────────
+  // ─── Selection helpers ────────────────────────────────────────────────────
 
   const handleSelectFurniture = useCallback((id: string | null) => {
     setSelectedId(id);
@@ -271,53 +327,39 @@ export default function Home() {
     if (id) setSelectedId(null);
   }, []);
 
-  // ─── Keyboard shortcuts ───────────────────────────────────────────────────────
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const tag = (e.target as HTMLElement).tagName;
     const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
-    // Undo: Ctrl+Z
     if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && !e.shiftKey && !isInput) {
-      e.preventDefault();
-      undo();
-      return;
+      e.preventDefault(); undo(); return;
     }
-    // Redo: Ctrl+Y or Ctrl+Shift+Z
     if (((e.key === 'y' || e.key === 'Y') && (e.ctrlKey || e.metaKey)) ||
         ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
-      if (!isInput) {
-        e.preventDefault();
-        redo();
-        return;
-      }
+      if (!isInput) { e.preventDefault(); redo(); return; }
     }
-
     if (e.key === 'Escape') {
-      setSelectedId(null);
-      setSelectedFeatureId(null);
-      setMeasureMode(false);
+      setSelectedId(null); setSelectedFeatureId(null); setMeasureMode(false);
     }
-
     if (selectedId) {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
-        handleDelete(selectedId);
-      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) handleDelete(selectedId);
       if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        handleDuplicate(selectedId);
+        e.preventDefault(); handleDuplicate(selectedId);
       }
       if ((e.key === 'r' || e.key === 'R') && !(e.ctrlKey || e.metaKey) && !isInput) {
-        e.preventDefault();
-        handleRotate(selectedId);
+        e.preventDefault(); handleRotate(selectedId);
       }
     }
-
     if (selectedFeatureId && (e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
       handleWallFeaturesChange(wallFeatures.filter(f => f.instanceId !== selectedFeatureId));
       setSelectedFeatureId(null);
     }
-  }, [selectedId, selectedFeatureId, wallFeatures, undo, redo, handleDelete, handleDuplicate, handleRotate, handleWallFeaturesChange]);
+  }, [selectedId, selectedFeatureId, wallFeatures, undo, redo,
+      handleDelete, handleDuplicate, handleRotate, handleWallFeaturesChange]);
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div
@@ -326,7 +368,7 @@ export default function Home() {
       tabIndex={0}
       style={{ outline: 'none' }}
     >
-      {/* Top header */}
+      {/* ── Top header ── */}
       <header className="h-10 bg-white border-b border-border flex items-center px-4 gap-3 flex-shrink-0">
         {/* Logo + app name */}
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -342,7 +384,7 @@ export default function Home() {
 
         <div className="w-px h-5 bg-border flex-shrink-0" />
 
-        {/* Editable room name */}
+        {/* Editable room name (active room) */}
         {editingRoomName ? (
           <input
             type="text"
@@ -356,7 +398,7 @@ export default function Home() {
         ) : (
           <button
             onClick={handleRoomNameEdit}
-            title="Click to rename room"
+            title="Click to rename this room"
             className="group flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors flex-shrink-0"
           >
             <span>{roomName}</span>
@@ -366,14 +408,14 @@ export default function Home() {
           </button>
         )}
 
-        {/* Editable room dimensions */}
+        {/* Room dimensions editor */}
         <RoomDimensionsEditor
           roomWidth={roomWidth}
           roomDepth={roomDepth}
           onChange={handleDimensionsChange}
         />
 
-        {/* Current layout badge */}
+        {/* Project name badge */}
         {currentLayoutName && (
           <span className="text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0">
             <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
@@ -383,27 +425,26 @@ export default function Home() {
           </span>
         )}
 
+        {/* Room count badge */}
+        {project.rooms.length > 1 && (
+          <span className="text-[10px] font-mono bg-muted text-muted-foreground px-2 py-0.5 rounded-full flex-shrink-0">
+            {project.rooms.length} rooms
+          </span>
+        )}
+
         <div className="flex-1" />
 
-        {/* Undo / Redo buttons */}
+        {/* Undo / Redo */}
         <div className="flex items-center gap-0.5">
-          <button
-            onClick={undo}
-            disabled={!canUndo}
-            title="Undo (Ctrl+Z)"
-            className="flex items-center justify-center w-7 h-7 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
+          <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"
+            className="flex items-center justify-center w-7 h-7 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M2 5H8.5C10.4 5 12 6.6 12 8.5S10.4 12 8.5 12H5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M4.5 2.5L2 5l2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
-          <button
-            onClick={redo}
-            disabled={!canRedo}
-            title="Redo (Ctrl+Y)"
-            className="flex items-center justify-center w-7 h-7 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
+          <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)"
+            className="flex items-center justify-center w-7 h-7 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M12 5H5.5C3.6 5 2 6.6 2 8.5S3.6 12 5.5 12H9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M9.5 2.5L12 5l-2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
@@ -411,7 +452,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Save/Load button */}
+        {/* Save/Load */}
         <button
           onClick={() => setShowSaveLoad(true)}
           className="flex items-center gap-1.5 text-[11px] font-semibold text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 px-2.5 py-1 rounded-md transition-colors"
@@ -419,7 +460,7 @@ export default function Home() {
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M2 9V10h8V9M6 2v6M3.5 5.5l2.5 2.5 2.5-2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Layouts
+          Projects
         </button>
 
         <div className="w-px h-5 bg-border" />
@@ -430,7 +471,17 @@ export default function Home() {
         </span>
       </header>
 
-      {/* Stats bar */}
+      {/* ── Room tabs ── */}
+      <RoomTabs
+        rooms={project.rooms}
+        activeRoomId={project.activeRoomId}
+        onSwitch={handleSwitchRoom}
+        onAdd={handleAddRoom}
+        onRename={handleRenameRoom}
+        onDelete={handleDeleteRoom}
+      />
+
+      {/* ── Stats bar ── */}
       <StatsBar
         roomWidth={roomWidth}
         roomDepth={roomDepth}
@@ -445,9 +496,8 @@ export default function Home() {
         onToggleMeasure={handleToggleMeasure}
       />
 
-      {/* Main layout */}
+      {/* ── Main layout ── */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left sidebar — Furniture + Walls tabs */}
         <FurnitureSidebar
           onAddFurniture={addFurniture}
           wallFeatures={wallFeatures}
@@ -458,7 +508,6 @@ export default function Home() {
           onSelectFeature={handleSelectFeature}
         />
 
-        {/* Canvas */}
         <RoomCanvas
           roomWidth={roomWidth}
           roomDepth={roomDepth}
@@ -478,7 +527,6 @@ export default function Home() {
           measureMode={measureMode}
         />
 
-        {/* Right properties panel */}
         <PropertiesPanel
           item={selectedItem}
           roomWidth={roomWidth}
@@ -490,17 +538,15 @@ export default function Home() {
         />
       </div>
 
+      {/* ── Save/Load modal ── */}
       {showSaveLoad && (
         <SaveLoadModal
           isOpen={showSaveLoad}
           onClose={() => setShowSaveLoad(false)}
-          furniture={furniture}
-          wallFeatures={wallFeatures}
+          rooms={project.rooms}
+          activeRoomId={project.activeRoomId}
           currentLayoutId={currentLayoutId}
           currentLayoutName={currentLayoutName}
-          roomName={roomName}
-          roomWidth={roomWidth}
-          roomDepth={roomDepth}
           onSave={handleSaveLayout}
           onLoad={handleLoadLayout}
         />

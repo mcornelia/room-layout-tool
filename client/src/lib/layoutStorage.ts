@@ -1,28 +1,88 @@
 // Room Layout Tool — Layout Storage Library
 // Philosophy: Professional Floor Plan Tool
-// Handles: saving, loading, listing, and deleting named room layouts in localStorage
+// Handles: saving, loading, listing, and deleting named multi-room projects in localStorage
 
 import { PlacedFurniture } from './furniture';
 import { WallFeature } from './wallFeatures';
 
-const STORAGE_KEY = 'room-layout-tool:layouts';
+const STORAGE_KEY = 'room-layout-tool:projects';
 const AUTOSAVE_KEY = 'room-layout-tool:autosave';
 
-export interface SavedLayout {
+// ─── Core data types ──────────────────────────────────────────────────────────
+
+/** A single room within a project */
+export interface Room {
   id: string;
-  name: string;
-  savedAt: string; // ISO date string
+  name: string;           // e.g. "Master Bedroom"
+  roomWidth: number;      // inches
+  roomDepth: number;      // inches
   furniture: PlacedFurniture[];
   wallFeatures: WallFeature[];
-  roomName?: string;  // user-defined room title shown in export
-  roomWidth?: number; // room width in inches
-  roomDepth?: number; // room depth in inches
-  thumbnail?: string; // future use
+  thumbnail?: string;     // base64 PNG data URL
+}
+
+/** A saved project containing one or more rooms */
+export interface SavedLayout {
+  id: string;
+  name: string;           // project / layout name
+  savedAt: string;        // ISO date string
+  rooms: Room[];
+  activeRoomId: string;   // which room was active when saved
+  // Legacy single-room fields (kept for backward compat when loading old saves)
+  furniture?: PlacedFurniture[];
+  wallFeatures?: WallFeature[];
+  roomName?: string;
+  roomWidth?: number;
+  roomDepth?: number;
+  thumbnail?: string;
 }
 
 export interface LayoutStore {
   layouts: SavedLayout[];
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+export function makeRoomId(): string {
+  return `room-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function makeLayoutId(): string {
+  return `layout-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function makeDefaultRoom(overrides?: Partial<Room>): Room {
+  return {
+    id: makeRoomId(),
+    name: 'Room 1',
+    roomWidth: 226,
+    roomDepth: 196.5,
+    furniture: [],
+    wallFeatures: [],
+    ...overrides,
+  };
+}
+
+/** Migrate a legacy single-room SavedLayout into the multi-room format */
+function migrateLegacy(layout: SavedLayout): SavedLayout {
+  if (layout.rooms && layout.rooms.length > 0) return layout; // already new format
+  const room: Room = {
+    id: makeRoomId(),
+    name: layout.roomName || 'Room 1',
+    roomWidth: layout.roomWidth ?? 226,
+    roomDepth: layout.roomDepth ?? 196.5,
+    furniture: layout.furniture ?? [],
+    wallFeatures: layout.wallFeatures ?? [],
+    thumbnail: layout.thumbnail,
+  };
+  return {
+    ...layout,
+    rooms: [room],
+    activeRoomId: room.id,
+  };
+}
+
+// ─── Store I/O ────────────────────────────────────────────────────────────────
 
 function readStore(): LayoutStore {
   try {
@@ -38,34 +98,28 @@ function writeStore(store: LayoutStore): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
 
+// ─── Public API ───────────────────────────────────────────────────────────────
+
 export function listLayouts(): SavedLayout[] {
-  return readStore().layouts.sort(
-    (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
-  );
+  return readStore().layouts
+    .map(migrateLegacy)
+    .sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
 }
 
 export function saveLayout(
   name: string,
-  furniture: PlacedFurniture[],
-  wallFeatures: WallFeature[],
-  existingId?: string,
-  roomName?: string,
-  roomWidth?: number,
-  roomDepth?: number,
-  thumbnail?: string
+  rooms: Room[],
+  activeRoomId: string,
+  existingId?: string
 ): SavedLayout {
   const store = readStore();
-  const id = existingId ?? `layout-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const id = existingId ?? makeLayoutId();
   const layout: SavedLayout = {
     id,
-    name: name.trim() || 'Untitled Layout',
+    name: name.trim() || 'Untitled Project',
     savedAt: new Date().toISOString(),
-    furniture,
-    wallFeatures,
-    roomName,
-    roomWidth,
-    roomDepth,
-    thumbnail,
+    rooms,
+    activeRoomId,
   };
 
   const idx = store.layouts.findIndex(l => l.id === id);
@@ -81,7 +135,8 @@ export function saveLayout(
 
 export function loadLayout(id: string): SavedLayout | null {
   const store = readStore();
-  return store.layouts.find(l => l.id === id) ?? null;
+  const found = store.layouts.find(l => l.id === id);
+  return found ? migrateLegacy(found) : null;
 }
 
 export function deleteLayout(id: string): void {
@@ -94,36 +149,8 @@ export function renameLayout(id: string, newName: string): void {
   const store = readStore();
   const layout = store.layouts.find(l => l.id === id);
   if (layout) {
-    layout.name = newName.trim() || 'Untitled Layout';
+    layout.name = newName.trim() || 'Untitled Project';
     writeStore(store);
-  }
-}
-
-// Auto-save: persists current state on every change (no name required)
-export function autoSave(
-  furniture: PlacedFurniture[],
-  wallFeatures: WallFeature[],
-  roomName?: string,
-  roomWidth?: number,
-  roomDepth?: number
-): void {
-  try {
-    localStorage.setItem(
-      AUTOSAVE_KEY,
-      JSON.stringify({ furniture, wallFeatures, roomName, roomWidth, roomDepth, savedAt: new Date().toISOString() })
-    );
-  } catch {
-    // Ignore storage quota errors
-  }
-}
-
-export function loadAutoSave(): { furniture: PlacedFurniture[]; wallFeatures: WallFeature[]; roomName?: string; roomWidth?: number; roomDepth?: number } | null {
-  try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
   }
 }
 
@@ -131,21 +158,66 @@ export function duplicateLayout(id: string): SavedLayout | null {
   const store = readStore();
   const original = store.layouts.find(l => l.id === id);
   if (!original) return null;
+  const src = migrateLegacy(original);
 
   const copy: SavedLayout = {
-    ...original,
-    id: `layout-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    name: `${original.name} (copy)`,
+    ...src,
+    id: makeLayoutId(),
+    name: `${src.name} (copy)`,
     savedAt: new Date().toISOString(),
-    // Deep-clone arrays so the copy is fully independent
-    furniture: JSON.parse(JSON.stringify(original.furniture)),
-    wallFeatures: JSON.parse(JSON.stringify(original.wallFeatures)),
+    rooms: JSON.parse(JSON.stringify(src.rooms)),
+    activeRoomId: src.activeRoomId,
   };
 
   store.layouts.push(copy);
   writeStore(store);
   return copy;
 }
+
+// ─── Auto-save (multi-room) ───────────────────────────────────────────────────
+
+export interface AutoSaveData {
+  rooms: Room[];
+  activeRoomId: string;
+}
+
+export function autoSave(data: AutoSaveData): void {
+  try {
+    localStorage.setItem(
+      AUTOSAVE_KEY,
+      JSON.stringify({ ...data, savedAt: new Date().toISOString() })
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function loadAutoSave(): AutoSaveData | null {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+
+    // Handle legacy single-room autosave
+    if (!parsed.rooms) {
+      const room: Room = {
+        id: makeRoomId(),
+        name: parsed.roomName || 'Room 1',
+        roomWidth: parsed.roomWidth ?? 226,
+        roomDepth: parsed.roomDepth ?? 196.5,
+        furniture: parsed.furniture ?? [],
+        wallFeatures: parsed.wallFeatures ?? [],
+      };
+      return { rooms: [room], activeRoomId: room.id };
+    }
+
+    return parsed as AutoSaveData;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Utility ──────────────────────────────────────────────────────────────────
 
 export function formatSavedAt(isoString: string): string {
   const d = new Date(isoString);
