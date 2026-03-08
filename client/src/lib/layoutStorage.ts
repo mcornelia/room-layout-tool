@@ -51,7 +51,8 @@ export function saveLayout(
   existingId?: string,
   roomName?: string,
   roomWidth?: number,
-  roomDepth?: number
+  roomDepth?: number,
+  thumbnail?: string
 ): SavedLayout {
   const store = readStore();
   const id = existingId ?? `layout-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -64,6 +65,7 @@ export function saveLayout(
     roomName,
     roomWidth,
     roomDepth,
+    thumbnail,
   };
 
   const idx = store.layouts.findIndex(l => l.id === id);

@@ -15,6 +15,7 @@ import {
 } from '@/lib/layoutStorage';
 import { PlacedFurniture } from '@/lib/furniture';
 import { WallFeature } from '@/lib/wallFeatures';
+import { generateThumbnail } from '@/lib/generateThumbnail';
 
 interface SaveLoadModalProps {
   isOpen: boolean;
@@ -70,7 +71,11 @@ export default function SaveLoadModal({
 
   const handleSave = useCallback(() => {
     const name = saveName.trim() || 'Untitled Layout';
-    const layout = saveLayout(name, furniture, wallFeatures, currentLayoutId ?? undefined, roomName, roomWidth, roomDepth);
+    // Generate thumbnail before saving
+    const thumbnail = (roomWidth && roomDepth)
+      ? generateThumbnail({ roomWidth, roomDepth, furniture, wallFeatures })
+      : undefined;
+    const layout = saveLayout(name, furniture, wallFeatures, currentLayoutId ?? undefined, roomName, roomWidth, roomDepth, thumbnail);
     setJustSavedId(layout.id);
     refreshLayouts();
     onSave(layout);
@@ -117,7 +122,7 @@ export default function SaveLoadModal({
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-xl shadow-2xl w-[520px] max-h-[80vh] flex flex-col overflow-hidden border border-border">
+      <div className="relative bg-white rounded-xl shadow-2xl w-[600px] max-h-[80vh] flex flex-col overflow-hidden border border-border">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <div>
@@ -275,15 +280,26 @@ export default function SaveLoadModal({
                         </div>
                       ) : (
                         <div className="flex items-start gap-3">
-                          {/* Layout icon */}
-                          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                              <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
-                              <rect x="3" y="4" width="4" height="5" rx="0.5" fill="currentColor" opacity="0.4"/>
-                              <rect x="9" y="6" width="4" height="3" rx="0.5" fill="currentColor" opacity="0.4"/>
-                              <rect x="3" y="10.5" width="10" height="1.5" rx="0.5" fill="currentColor" opacity="0.25"/>
-                            </svg>
-                          </div>
+                          {/* Thumbnail or fallback icon */}
+                          {layout.thumbnail ? (
+                            <div className="w-16 h-16 rounded-lg overflow-hidden border border-border flex-shrink-0 bg-slate-50">
+                              <img
+                                src={layout.thumbnail}
+                                alt={layout.name}
+                                className="w-full h-full object-contain"
+                                draggable={false}
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-16 h-16 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <rect x="2" y="2" width="20" height="20" rx="3" stroke="currentColor" strokeWidth="1.5" opacity="0.5"/>
+                                <rect x="5" y="7" width="6" height="8" rx="1" fill="currentColor" opacity="0.35"/>
+                                <rect x="13" y="9" width="6" height="5" rx="1" fill="currentColor" opacity="0.35"/>
+                                <rect x="5" y="17" width="14" height="2" rx="0.5" fill="currentColor" opacity="0.2"/>
+                              </svg>
+                            </div>
+                          )}
 
                           {/* Info */}
                           <div className="flex-1 min-w-0">
