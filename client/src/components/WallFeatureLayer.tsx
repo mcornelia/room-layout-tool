@@ -256,28 +256,30 @@ export default function WallFeatureLayer({
         />
       );
 
-      // Label — always visible with white background pill
+      // Label — always visible inside the room, with white background pill
       {
-        const labelText = `${feature.label}  ${formatInches(length)}`;
+        const labelText = feature.label ? `${feature.label}  ${formatInches(length)}` : formatInches(length);
+        // Position label inside the room, below/above the symbol
+        const LABEL_OFFSET = 24; // px inside room from wall edge
         const labelY = wall === 'top'
-          ? wallY - 18
-          : wallY + wt + WINDOW_DEPTH + 18;
-        const fontSize = 11;
-        const approxTextWidth = labelText.length * 6.2;
-        const pillW = approxTextWidth + 10;
-        const pillH = 16;
+          ? wt + LABEL_OFFSET + 6
+          : canvasH - wt - LABEL_OFFSET;
+        const fontSize = 12;
+        const approxTextWidth = labelText.length * 7;
+        const pillW = approxTextWidth + 14;
+        const pillH = 20;
         const pillX = x1 + lengthPx / 2 - pillW / 2;
-        const pillY = labelY - pillH + 3;
+        const pillY = labelY - pillH + 4;
         elements.push(
           <g key="label" style={{ pointerEvents: 'none', userSelect: 'none' }}>
             <rect
               x={pillX} y={pillY}
               width={pillW} height={pillH}
-              rx={3}
+              rx={4}
               fill="white"
               stroke={strokeColor}
-              strokeWidth={isSelected ? 1.5 : 1}
-              opacity={0.92}
+              strokeWidth={isSelected ? 2 : 1.5}
+              opacity={0.95}
             />
             <text
               x={x1 + lengthPx / 2} y={labelY}
@@ -413,31 +415,32 @@ export default function WallFeatureLayer({
         />
       );
 
-      // Label — always visible with white background pill, rotated for vertical walls
+      // Label — always visible inside the room, rotated for vertical walls
       {
-        const labelText = `${feature.label}  ${formatInches(length)}`;
-        const labelX = wall === 'left'
-          ? wallX - 18
-          : wallX + wt + WINDOW_DEPTH + 18;
-        const cx = labelX;
+        const labelText = feature.label ? `${feature.label}  ${formatInches(length)}` : formatInches(length);
+        // Position label inside the room from the wall edge
+        const LABEL_OFFSET = 24;
+        const cx = wall === 'left'
+          ? wt + LABEL_OFFSET
+          : canvasW - wt - LABEL_OFFSET;
         const cy = y1 + lengthPx / 2;
-        const fontSize = 11;
-        const approxTextWidth = labelText.length * 6.2;
-        const pillW = approxTextWidth + 10;
-        const pillH = 16;
+        const fontSize = 12;
+        const approxTextWidth = labelText.length * 7;
+        const pillW = approxTextWidth + 14;
+        const pillH = 20;
         elements.push(
           <g key="label"
             transform={`rotate(-90, ${cx}, ${cy})`}
             style={{ pointerEvents: 'none', userSelect: 'none' }}
           >
             <rect
-              x={cx - pillW / 2} y={cy - pillH + 3}
+              x={cx - pillW / 2} y={cy - pillH + 4}
               width={pillW} height={pillH}
-              rx={3}
+              rx={4}
               fill="white"
               stroke={strokeColor}
-              strokeWidth={isSelected ? 1.5 : 1}
-              opacity={0.92}
+              strokeWidth={isSelected ? 2 : 1.5}
+              opacity={0.95}
             />
             <text
               x={cx} y={cy}
