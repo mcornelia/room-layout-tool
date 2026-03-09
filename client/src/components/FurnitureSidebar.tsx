@@ -16,6 +16,7 @@ import {
 } from '@/lib/productScraper';
 import { WallFeature } from '@/lib/wallFeatures';
 import WallFeaturesPanel from './WallFeaturesPanel';
+import { useUnit } from '@/contexts/UnitContext';
 
 interface FurnitureSidebarProps {
   onAddFurniture: (template: FurnitureTemplate) => void;
@@ -64,6 +65,7 @@ export default function FurnitureSidebar({
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiKeySaved, setApiKeySaved] = useState(false);
 
+  const { fmt, unitLabel } = useUnit();
   const byCategory = getFurnitureByCategory();
 
   const toggleCategory = (key: string) => {
@@ -478,7 +480,7 @@ export default function FurnitureSidebar({
                           </div>
                           <div className="flex gap-1.5">
                             <div className="flex-1">
-                              <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Width (in)</label>
+                              <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Width ({unitLabel})</label>
                               <input
                                 type="number"
                                 min={1} max={600}
@@ -488,7 +490,7 @@ export default function FurnitureSidebar({
                               />
                             </div>
                             <div className="flex-1">
-                              <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Depth (in)</label>
+                              <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Depth ({unitLabel})</label>
                               <input
                                 type="number"
                                 min={1} max={600}
@@ -579,7 +581,7 @@ export default function FurnitureSidebar({
                           </div>
                           <div className="flex gap-1.5">
                             <div className="flex-1">
-                              <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Width (in)</label>
+                              <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Width ({unitLabel})</label>
                               <input
                                 type="number"
                                 placeholder="60"
@@ -590,7 +592,7 @@ export default function FurnitureSidebar({
                               />
                             </div>
                             <div className="flex-1">
-                              <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Depth (in)</label>
+                              <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Depth ({unitLabel})</label>
                               <input
                                 type="number"
                                 placeholder="24"
@@ -676,6 +678,7 @@ function FurnitureCard({
   isCustom?: boolean;
   onDelete?: (id: string, e: React.MouseEvent) => void;
 }) {
+  const { fmt } = useUnit();
   return (
     <div
       draggable
@@ -697,7 +700,7 @@ function FurnitureCard({
           )}
         </div>
         <p className="font-mono text-[9px] text-muted-foreground">
-          {template.defaultWidth}" × {template.defaultDepth}"
+          {fmt(template.defaultWidth)} × {fmt(template.defaultDepth)}
         </p>
       </div>
       <div className="flex items-center gap-0.5 flex-shrink-0">

@@ -92,6 +92,12 @@ export default function RoomCanvas({
 }: RoomCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const { fmt, unitMode } = useUnit();
+  // Helper: format a tick value (in inches) for the ruler label
+  const fmtTick = (tick: number): string => {
+    if (unitMode === 'cm') return `${Math.round(tick * 2.54)}`;
+    if (unitMode === 'in') return `${tick}"`;
+    return `${Math.floor(tick / 12)}'`;
+  };
   const containerRef = useRef<HTMLDivElement>(null);
   const itemClickedRef = useRef(false); // flag: true when a furniture item was mousedown'd
   const [scale, setScale] = useState(2); // px per inch
@@ -256,9 +262,9 @@ export default function RoomCanvas({
     onDrop(template, x, y);
   };
 
-  // Ruler ticks — minor every 12", major every 24"
-  const minorTick = 12;
-  const majorTick = 24;
+  // Ruler ticks — in cm mode use ~10cm minor / ~50cm major; imperial uses 12"/24"
+  const minorTick = unitMode === 'cm' ? Math.round(10 / 2.54) : 12; // ~3.94in per 10cm
+  const majorTick = unitMode === 'cm' ? Math.round(50 / 2.54) : 24; // ~19.69in per 50cm
   const rulerTicksH: number[] = [];
   const rulerTicksV: number[] = [];
   for (let i = 0; i <= roomWidth; i += minorTick) rulerTicksH.push(i);
@@ -373,7 +379,7 @@ export default function RoomCanvas({
                 />
                 {isMajor && tick > 0 && (
                   <span className="font-mono text-[9px] absolute -translate-x-1/2" style={{ top: 14, color: 'oklch(0.45 0.015 264)' }}>
-                    {unitMode === 'in' ? `${tick}"` : `${Math.floor(tick / 12)}'`}
+                    {fmtTick(tick)}
                   </span>
                 )}
               </div>
@@ -407,7 +413,7 @@ export default function RoomCanvas({
                     className="font-mono text-[9px] absolute"
                     style={{ left: 2, top: -8, writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: 'oklch(0.45 0.015 264)' }}
                   >
-                    {unitMode === 'in' ? `${tick}"` : `${Math.floor(tick / 12)}'`}
+                    {fmtTick(tick)}
                   </span>
                 )}
               </div>
