@@ -4,7 +4,7 @@
 // Includes unit toggle: ft+in ↔ inches only
 
 import { useState, useRef, useEffect } from 'react';
-import { PlacedFurniture, squareFeetFromInches } from '@/lib/furniture';
+import { PlacedFurniture } from '@/lib/furniture';
 import { useUnit } from '@/contexts/UnitContext';
 
 interface StatsBarProps {
@@ -42,7 +42,7 @@ export default function StatsBar({
   annotateMode,
   onToggleAnnotate,
 }: StatsBarProps) {
-  const { unitMode, setUnitMode, fmt } = useUnit();
+  const { unitMode, setUnitMode, fmt, fmtArea } = useUnit();
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
 
@@ -57,10 +57,10 @@ export default function StatsBar({
     return () => document.removeEventListener('mousedown', handler);
   }, [exportMenuOpen]);
 
-  const totalSqFt = squareFeetFromInches(roomWidth, roomDepth);
-  const usedSqFt = furniture.reduce((sum, f) => sum + squareFeetFromInches(f.width, f.depth), 0);
-  const freeSqFt = Math.max(0, totalSqFt - usedSqFt);
-  const usedPct = totalSqFt > 0 ? (usedSqFt / totalSqFt) * 100 : 0;
+  const totalSqIn = roomWidth * roomDepth;
+  const usedSqIn = furniture.reduce((sum, f) => sum + f.width * f.depth, 0);
+  const freeSqIn = Math.max(0, totalSqIn - usedSqIn);
+  const usedPct = totalSqIn > 0 ? (usedSqIn / totalSqIn) * 100 : 0;
 
   return (
     <div className="h-12 bg-white border-b border-border flex items-center px-4 gap-6 flex-shrink-0">
@@ -77,9 +77,9 @@ export default function StatsBar({
 
       {/* Stats */}
       <div className="flex items-center gap-5">
-        <Stat label="Room Area" value={`${totalSqFt.toFixed(0)} sq ft`} />
-        <Stat label="Furniture" value={`${usedSqFt.toFixed(1)} sq ft`} accent="amber" />
-        <Stat label="Free Space" value={`${freeSqFt.toFixed(1)} sq ft`} accent="green" />
+        <Stat label="Room Area" value={fmtArea(totalSqIn)} />
+        <Stat label="Furniture" value={fmtArea(usedSqIn)} accent="amber" />
+        <Stat label="Free Space" value={fmtArea(freeSqIn)} accent="green" />
         <Stat label="Items" value={`${furniture.length}`} />
       </div>
 
@@ -102,27 +102,40 @@ export default function StatsBar({
       {/* Controls */}
       <div className="flex items-center gap-3">
 
-        {/* Unit toggle */}
-        <div className="flex items-center gap-1.5 border border-border rounded-md overflow-hidden">
+        {/* Unit toggle: Imperial ft, Imperial in, Metric cm */}
+        <div className="flex items-center border border-border rounded-md overflow-hidden">
           <button
             onClick={() => setUnitMode('ft-in')}
+            title="Imperial: feet + inches"
             className={`text-[10px] font-semibold px-2 py-1 transition-colors ${
               unitMode === 'ft-in'
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-background text-muted-foreground hover:text-foreground'
             }`}
           >
-            ft + in
+            ft
           </button>
           <button
             onClick={() => setUnitMode('in')}
-            className={`text-[10px] font-semibold px-2 py-1 transition-colors ${
+            title="Imperial: decimal inches"
+            className={`text-[10px] font-semibold px-2 py-1 border-l border-border transition-colors ${
               unitMode === 'in'
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-background text-muted-foreground hover:text-foreground'
             }`}
           >
             in
+          </button>
+          <button
+            onClick={() => setUnitMode('cm')}
+            title="Metric: centimetres"
+            className={`text-[10px] font-semibold px-2 py-1 border-l border-border transition-colors ${
+              unitMode === 'cm'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-background text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            cm
           </button>
         </div>
 

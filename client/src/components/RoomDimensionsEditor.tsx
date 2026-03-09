@@ -1,14 +1,63 @@
 // Room Layout Tool — RoomDimensionsEditor Component
 // Philosophy: Professional Floor Plan Tool
 // Inline popover that lets users set custom room width and depth.
-// Accepts input in feet+inches (e.g. 18' 10") or decimal inches (e.g. 226).
-// Validates range: 24"–1200" (2'–100') per dimension.
+// Accepts input in the current unit mode: ft+in, decimal inches, or centimetres.
+// Validates range: 24"–1200" (2'–100' / ~61–3048 cm) per dimension.
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useUnit } from '@/contexts/UnitContext';
 
-const MIN_IN = 24;   // 2 ft
-const MAX_IN = 1200; // 100 ft
+const MIN_IN = 24;   // 2 ft / ~61 cm
+const MAX_IN = 1200; // 100 ft / ~3048 cm
+
+/** Format inches for display in the input field based on unit mode */
+function formatForInput(inches: number, mode: string): string {
+  if (mode === 'cm') {
+    return String(Math.round(inches * 2.54 * 10) / 10);
+  }
+  if (mode === 'in') return String(Math.round(inches * 10) / 10);
+  // ft-in
+  const ft = Math.floor(inches / 12);
+  const rem = Math.round((inches % 12) * 10) / 10;
+  if (rem === 0) return `${ft}'`;
+  return `${ft}' ${rem}"`;
+}
+
+/** Parse a user-entered string into inches based on unit mode */
+function parseInput(raw: string, mode: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+
+  if (mode === 'cm') {
+    const num = parseFloat(s.replace(',', '.'));
+    if (isNaN(num) || num <= 0) return null;
+    return num / 2.54;
+  }
+
+  if (mode === 'in') {
+    const num = parseFloat(s);
+    if (isNaN(num) || num <= 0) return null;
+    return num;
+  }
+
+  // ft-in mode: accept "18' 10"", "18'10"", "18 10", "226", "18ft 10in", etc.
+  const normalized = s.replace(/['"]/g, match => match === "'" ? 'ft' : 'in');
+
+  const ftIn = normalized.match(/^(\d+(?:\.\d+)?)\s*ft\s*(\d+(?:\.\d+)?)\s*in?$/i)
+    || normalized.match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/);
+  if (ftIn) return parseFloat(ftIn[1]) * 12 + parseFloat(ftIn[2]);
+
+  const ftOnly = normalized.match(/^(\d+(?:\.\d+)?)\s*ft$/i);
+  if (ftOnly) return parseFloat(ftOnly[1]) * 12;
+
+  const inOnly = normalized.match(/^(\d+(?:\.\d+)?)\s*in?$/i);
+  if (inOnly) return parseFloat(inOnly[1]);
+
+  const bare = normalized.match(/^(\d+(?:\.\d+)?)$/);
+  if (bare) return parseFloat(bare[1]);
+
+  return null;
+}
 
 interface RoomDimensionsEditorProps {
   roomWidth: number;  // inches
@@ -16,47 +65,8 @@ interface RoomDimensionsEditorProps {
   onChange: (width: number, depth: number) => void;
 }
 
-/** Parse a user-entered string into inches.
- *  Accepts:
- *   - plain number → treated as inches (e.g. "226")
- *   - feet only    → "18'" or "18 ft"
- *   - feet+inches  → "18'10\"" / "18 10" / "18ft 10in" / "18' 10\""
- *   - inches only  → "10\"" / "10 in"
- */
-function parseToInches(raw: string): number | null {
-  const s = raw.trim().replace(/['"]/g, match => match === "'" ? 'ft' : 'in');
-
-  // feet+inches: e.g. "18ft10in" / "18 10"
-  const ftIn = s.match(/^(\d+(?:\.\d+)?)\s*ft\s*(\d+(?:\.\d+)?)\s*in?$/i)
-    || s.match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/);
-  if (ftIn) return parseFloat(ftIn[1]) * 12 + parseFloat(ftIn[2]);
-
-  // feet only: "18ft" / "18 ft"
-  const ftOnly = s.match(/^(\d+(?:\.\d+)?)\s*ft$/i);
-  if (ftOnly) return parseFloat(ftOnly[1]) * 12;
-
-  // inches only: "226in" / "226"
-  const inOnly = s.match(/^(\d+(?:\.\d+)?)\s*in?$/i);
-  if (inOnly) return parseFloat(inOnly[1]);
-
-  // bare number → inches
-  const bare = s.match(/^(\d+(?:\.\d+)?)$/);
-  if (bare) return parseFloat(bare[1]);
-
-  return null;
-}
-
-/** Format inches for display in the input field based on unit mode */
-function formatForInput(inches: number, mode: string): string {
-  if (mode === 'in') return String(Math.round(inches * 10) / 10);
-  const ft = Math.floor(inches / 12);
-  const rem = Math.round((inches % 12) * 10) / 10;
-  if (rem === 0) return `${ft}'`;
-  return `${ft}' ${rem}"`;
-}
-
 export default function RoomDimensionsEditor({ roomWidth, roomDepth, onChange }: RoomDimensionsEditorProps) {
-  const { unitMode, fmt } = useUnit();
+  const { unitMode, fmt, fmtArea } = useUnit();
   const [open, setOpen] = useState(false);
   const [wDraft, setWDraft] = useState('');
   const [dDraft, setDDraft] = useState('');
@@ -77,17 +87,33 @@ export default function RoomDimensionsEditor({ roomWidth, roomDepth, onChange }:
   }, []);
 
   const handleApply = useCallback(() => {
-    const w = parseToInches(wDraft);
-    const d = parseToInches(dDraft);
+    const w = parseInput(wDraft, unitMode);
+    const d = parseInput(dDraft, unitMode);
 
-    if (w === null || isNaN(w)) { setError('Invalid width — try "18\' 10\\"" or "226"'); return; }
-    if (d === null || isNaN(d)) { setError('Invalid depth — try "16\' 4.5\\"" or "196.5"'); return; }
-    if (w < MIN_IN || w > MAX_IN) { setError(`Width must be between ${MIN_IN}" and ${MAX_IN}"`); return; }
-    if (d < MIN_IN || d > MAX_IN) { setError(`Depth must be between ${MIN_IN}" and ${MAX_IN}"`); return; }
+    const unitHint = unitMode === 'cm'
+      ? `e.g. "457" (cm)`
+      : unitMode === 'in'
+      ? `e.g. "226" (inches)`
+      : `e.g. "18' 10\\"" or "226"`;
+
+    if (w === null || isNaN(w)) { setError(`Invalid width — ${unitHint}`); return; }
+    if (d === null || isNaN(d)) { setError(`Invalid depth — ${unitHint}`); return; }
+    if (w < MIN_IN || w > MAX_IN) {
+      const minLabel = unitMode === 'cm' ? `${(MIN_IN * 2.54).toFixed(0)} cm` : `${MIN_IN}"`;
+      const maxLabel = unitMode === 'cm' ? `${(MAX_IN * 2.54).toFixed(0)} cm` : `${MAX_IN}"`;
+      setError(`Width must be between ${minLabel} and ${maxLabel}`);
+      return;
+    }
+    if (d < MIN_IN || d > MAX_IN) {
+      const minLabel = unitMode === 'cm' ? `${(MIN_IN * 2.54).toFixed(0)} cm` : `${MIN_IN}"`;
+      const maxLabel = unitMode === 'cm' ? `${(MAX_IN * 2.54).toFixed(0)} cm` : `${MAX_IN}"`;
+      setError(`Depth must be between ${minLabel} and ${maxLabel}`);
+      return;
+    }
 
     onChange(Math.round(w * 10) / 10, Math.round(d * 10) / 10);
     closeEditor();
-  }, [wDraft, dDraft, onChange, closeEditor]);
+  }, [wDraft, dDraft, unitMode, onChange, closeEditor]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleApply();
@@ -109,7 +135,15 @@ export default function RoomDimensionsEditor({ roomWidth, roomDepth, onChange }:
     return () => document.removeEventListener('mousedown', handler);
   }, [open, closeEditor]);
 
-  const sqFt = (roomWidth * roomDepth / 144).toFixed(1);
+  // Placeholder and hint text based on unit mode
+  const wPlaceholder = unitMode === 'cm' ? '457' : unitMode === 'in' ? '226' : "18' 10\"";
+  const dPlaceholder = unitMode === 'cm' ? '396' : unitMode === 'in' ? '196.5' : "16' 4.5\"";
+  const unitSuffix = unitMode === 'cm' ? 'cm' : unitMode === 'in' ? 'in' : 'ft/in';
+  const hintText = unitMode === 'cm'
+    ? <>Enter values in <strong>centimetres</strong> (e.g. <code className="font-mono bg-muted px-1 rounded">457</code>).</>
+    : unitMode === 'in'
+    ? <>Enter values in <strong>decimal inches</strong> (e.g. <code className="font-mono bg-muted px-1 rounded">226</code>).</>
+    : <>Enter values in <strong>feet+inches</strong> (e.g. <code className="font-mono bg-muted px-1 rounded">18' 10"</code>) or <strong>decimal inches</strong> (e.g. <code className="font-mono bg-muted px-1 rounded">226</code>).</>;
 
   return (
     <div className="relative">
@@ -120,7 +154,7 @@ export default function RoomDimensionsEditor({ roomWidth, roomDepth, onChange }:
         title="Click to edit room dimensions"
         className="group flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
       >
-        <span>{fmt(roomWidth)} W × {fmt(roomDepth)} D · {sqFt} sq ft</span>
+        <span>{fmt(roomWidth)} W \u00d7 {fmt(roomDepth)} D \u00b7 {fmtArea(roomWidth * roomDepth)}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="opacity-0 group-hover:opacity-60 transition-opacity flex-shrink-0">
           <path d="M7 1l2 2-6 6H1V7l6-6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
         </svg>
@@ -142,43 +176,41 @@ export default function RoomDimensionsEditor({ roomWidth, roomDepth, onChange }:
             </button>
           </div>
 
-          <p className="text-[10px] text-muted-foreground mb-3 leading-tight">
-            Enter values in <strong>feet+inches</strong> (e.g. <code className="font-mono bg-muted px-1 rounded">18' 10"</code>) or <strong>decimal inches</strong> (e.g. <code className="font-mono bg-muted px-1 rounded">226</code>).
-          </p>
+          <p className="text-[10px] text-muted-foreground mb-3 leading-tight">{hintText}</p>
 
           <div className="space-y-2.5">
             {/* Width */}
             <div>
               <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                Width (left → right)
+                Width (left \u2192 right)
               </label>
               <div className="relative">
                 <input
                   type="text"
                   value={wDraft}
                   onChange={e => { setWDraft(e.target.value); setError(''); }}
-                  placeholder={unitMode === 'in' ? '226' : "18' 10\""}
+                  placeholder={wPlaceholder}
                   autoFocus
                   className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary font-mono"
                 />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">in</span>
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">{unitSuffix}</span>
               </div>
             </div>
 
             {/* Depth */}
             <div>
               <label className="block text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                Depth (top → bottom)
+                Depth (top \u2192 bottom)
               </label>
               <div className="relative">
                 <input
                   type="text"
                   value={dDraft}
                   onChange={e => { setDDraft(e.target.value); setError(''); }}
-                  placeholder={unitMode === 'in' ? '196.5' : "16' 4.5\""}
+                  placeholder={dPlaceholder}
                   className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary font-mono"
                 />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">in</span>
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">{unitSuffix}</span>
               </div>
             </div>
           </div>
@@ -234,10 +266,10 @@ export default function RoomDimensionsEditor({ roomWidth, roomDepth, onChange }:
 }
 
 const PRESETS: { label: string; w: number; d: number }[] = [
-  { label: "10' × 10'",  w: 120, d: 120 },
-  { label: "12' × 12'",  w: 144, d: 144 },
-  { label: "12' × 14'",  w: 144, d: 168 },
-  { label: "14' × 16'",  w: 168, d: 192 },
-  { label: "18'10\" × 16'4.5\"", w: 226, d: 196.5 },
-  { label: "20' × 20'",  w: 240, d: 240 },
+  { label: "10' \u00d7 10'",  w: 120, d: 120 },
+  { label: "12' \u00d7 12'",  w: 144, d: 144 },
+  { label: "12' \u00d7 14'",  w: 144, d: 168 },
+  { label: "14' \u00d7 16'",  w: 168, d: 192 },
+  { label: "18'10\" \u00d7 16'4.5\"", w: 226, d: 196.5 },
+  { label: "20' \u00d7 20'",  w: 240, d: 240 },
 ];

@@ -3,7 +3,7 @@
 // Shows selected furniture properties and allows precise editing + color customization
 
 import { useRef } from 'react';
-import { PlacedFurniture, squareFeetFromInches, FURNITURE_TEMPLATES } from '@/lib/furniture';
+import { PlacedFurniture, FURNITURE_TEMPLATES } from '@/lib/furniture';
 import { useUnit } from '@/contexts/UnitContext';
 import { Trash2, RotateCw, Copy } from 'lucide-react';
 
@@ -175,8 +175,8 @@ export default function PropertiesPanel({
     );
   }
 
-  const { fmt } = useUnit();
-  const sqFt = squareFeetFromInches(item.width, item.depth);
+  const { fmt, fmtArea, unitLabel } = useUnit();
+  const sqIn = item.width * item.depth;
 
   // Find the original template to allow color reset
   const template = FURNITURE_TEMPLATES.find(t => t.id === item.templateId);
@@ -202,7 +202,7 @@ export default function PropertiesPanel({
           <h2 className="text-xs font-semibold text-foreground truncate">{item.name}</h2>
         </div>
         <p className="font-mono text-[10px] text-muted-foreground">
-          {fmt(item.width)} × {fmt(item.depth)} · {sqFt.toFixed(1)} sq ft
+          {fmt(item.width)} × {fmt(item.depth)} · {fmtArea(sqIn)}
         </p>
       </div>
 
@@ -226,7 +226,7 @@ export default function PropertiesPanel({
             <NumericField
               label="Width"
               value={item.width}
-              unit="in"
+              unit={unitLabel}
               min={6}
               max={roomWidth}
               onChange={v => onUpdate({ ...item, width: Math.min(v, roomWidth - item.x) })}
@@ -234,7 +234,7 @@ export default function PropertiesPanel({
             <NumericField
               label="Depth"
               value={item.depth}
-              unit="in"
+              unit={unitLabel}
               min={6}
               max={roomDepth}
               onChange={v => onUpdate({ ...item, depth: Math.min(v, roomDepth - item.y) })}
@@ -249,7 +249,7 @@ export default function PropertiesPanel({
             <NumericField
               label="From Left"
               value={item.x}
-              unit="in"
+              unit={unitLabel}
               min={0}
               max={roomWidth - item.width}
               onChange={v => onUpdate({ ...item, x: Math.max(0, Math.min(v, roomWidth - item.width)) })}
@@ -257,7 +257,7 @@ export default function PropertiesPanel({
             <NumericField
               label="From Top"
               value={item.y}
-              unit="in"
+              unit={unitLabel}
               min={0}
               max={roomDepth - item.depth}
               onChange={v => onUpdate({ ...item, y: Math.max(0, Math.min(v, roomDepth - item.depth)) })}
@@ -305,7 +305,7 @@ export default function PropertiesPanel({
             </div>
             <div className="flex justify-between">
               <span className="font-mono text-[10px] text-muted-foreground">Area</span>
-              <span className="font-mono text-[10px] text-foreground">{sqFt.toFixed(1)} sq ft</span>
+              <span className="font-mono text-[10px] text-foreground">{fmtArea(sqIn)}</span>
             </div>
             <div className="flex justify-between">
               <span className="font-mono text-[10px] text-muted-foreground">Position</span>
