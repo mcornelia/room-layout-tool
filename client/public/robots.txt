@@ -1,0 +1,5 @@
+# robots.txt for Room Layout Tool
+User-agent: *
+Allow: /
+
+Sitemap: https://mcornelia.github.io/room-layout-tool/sitemap.xml
